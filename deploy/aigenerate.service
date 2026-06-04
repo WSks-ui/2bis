@@ -1,0 +1,15 @@
+[Unit]
+Description=AI Image Generator Backend
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/aigen/backend
+ExecStart=/opt/aigen/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+EnvironmentFile=/opt/aigen/backend/.env
+
+[Install]
+WantedBy=multi-user.target
