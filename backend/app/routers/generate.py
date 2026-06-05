@@ -1,8 +1,7 @@
 from datetime import datetime
-
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+import traceback
 
 from app.database import get_db
 from app.dependencies import get_current_user
@@ -24,21 +23,22 @@ async def generate(
         raise HTTPException(status_code=400, detail="Prompt cannot be empty")
 
     cost = PointManager.get_cost(current_user.is_member, data.quality)
-    result = await db.execute(select(User).where(User.id == current_user.id))
-    user = result.scalar_one()
-    if user.points < cost:
-        raise HTTPException(status_code=400, detail="Insufficient points")
-
     deducted = await PointManager.deduct_points(db, current_user.id, cost)
     if not deducted:
         raise HTTPException(status_code=400, detail="Insufficient points")
 
+    print(f"[GENERATE] user={current_user.username} prompt={data.prompt[:50]}... quality={data.quality} cost={cost}")
+
     try:
-        image_url = await AIClient.generate(data.prompt, data.quality)
+        image_url = await AIClient.generate(data.prompt, data.quality, data.size)
     except Exception as e:
         await PointManager.add_points(db, current_user.id, cost)
         await db.flush()
+        print(f"[GENERATE ERROR] {e}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"AI generation failed: {str(e)}")
+
+    print(f"[GENERATE SUCCESS] image_url length={len(image_url)}")
 
     history = GenerateHistory(
         user_id=current_user.id,

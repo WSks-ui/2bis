@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import asyncio
 
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException
@@ -21,10 +22,13 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=400, detail="Username already exists")
 
-    hashed_password = bcrypt.hashpw(data.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    # bcrypt 是 CPU 密集型,放到线程池执行,避免阻塞 asyncio 事件循环
+    hashed_password = await asyncio.to_thread(
+        bcrypt.hashpw, data.password.encode("utf-8"), bcrypt.gensalt()
+    )
     user = User(
         username=data.username,
-        hashed_password=hashed_password,
+        hashed_password=hashed_password.decode("utf-8"),
         points=0,
         is_member=False,
         created_at=datetime.utcnow(),
@@ -49,7 +53,13 @@ async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
     if user is None:
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
-    if not bcrypt.checkpw(data.password.encode("utf-8"), user.hashed_password.encode("utf-8")):
+    # 同样放到线程池,避免阻塞事件循环
+    password_valid = await asyncio.to_thread(
+        bcrypt.checkpw,
+        data.password.encode("utf-8"),
+        user.hashed_password.encode("utf-8"),
+    )
+    if not password_valid:
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
     expire = datetime.utcnow() + timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
