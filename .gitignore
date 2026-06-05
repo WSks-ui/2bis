@@ -20,3 +20,6 @@ dist/
 
 # OS
 Thumbs.db
+
+# 后端生成的 AI 图片 (落盘,不入库)
+backend/static/images/

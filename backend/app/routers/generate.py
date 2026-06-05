@@ -8,6 +8,7 @@ from app.dependencies import get_current_user
 from app.models import GenerateHistory, User
 from app.schemas import GenerateRequest, GenerateResponse
 from app.services.ai_client import AIClient
+from app.services.image_storage import save_data_url
 from app.services.point_manager import PointManager
 
 router = APIRouter(prefix="/generate", tags=["generate"])

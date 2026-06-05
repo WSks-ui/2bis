@@ -5,7 +5,14 @@ import traceback
 
 import httpx
 
-from app.config import AI_API_KEY, AI_API_URL, AI_TIMEOUT, AI_MAX_CONCURRENT
+from app.config import (
+    AI_API_KEY,
+    AI_API_URL,
+    AI_TIMEOUT,
+    AI_MAX_CONCURRENT,
+    HTTP_MAX_CONNECTIONS,
+    HTTP_MAX_KEEPALIVE,
+)
 
 logger = logging.getLogger("ai_client")
 logger.setLevel(logging.INFO)
@@ -20,6 +27,34 @@ MAX_RETRIES = 2
 
 _semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 
+# 模块级 httpx client 单例, 复用连接池, 避免每次请求新建 TCP 连接导致 socket 耗尽
+_client: httpx.AsyncClient | None = None
+_client_lock = asyncio.Lock()
+
+
+async def get_client() -> httpx.AsyncClient:
+    global _client
+    if _client is None:
+        async with _client_lock:
+            if _client is None:
+                _client = httpx.AsyncClient(
+                    timeout=AI_TIMEOUT,
+                    proxy=None,
+                    trust_env=False,
+                    limits=httpx.Limits(
+                        max_connections=HTTP_MAX_CONNECTIONS,
+                        max_keepalive_connections=HTTP_MAX_KEEPALIVE,
+                    ),
+                )
+    return _client
+
+
+async def close_client() -> None:
+    global _client
+    if _client is not None:
+        await _client.aclose()
+        _client = None
+
 QUALITY_LEVEL_MAP = {
     "low": "low",
     "medium": "medium",
@@ -28,10 +63,6 @@ QUALITY_LEVEL_MAP = {
 
 
 class AIClient:
-
-    @staticmethod
-    def _make_client():
-        return httpx.AsyncClient(timeout=AI_TIMEOUT, proxy=None, trust_env=False)
 
     @staticmethod
     async def generate(prompt: str, quality: str, size: str) -> str:
@@ -64,22 +95,22 @@ class AIClient:
             if _semaphore.locked():
                 logger.info(f"[AI QUEUE] waiting for upstream slot...")
 
+            client = await get_client()
             for attempt in range(1 + MAX_RETRIES):
                 try:
-                    async with AIClient._make_client() as client:
-                        if is_json:
-                            response = await client.post(
-                                url,
-                                json=payload,
-                                headers={"Authorization": f"Bearer {AI_API_KEY}"},
-                            )
-                        else:
-                            response = await client.post(
-                                url,
-                                files=files,
-                                data=payload,
-                                headers={"Authorization": f"Bearer {AI_API_KEY}"},
-                            )
+                    if is_json:
+                        response = await client.post(
+                            url,
+                            json=payload,
+                            headers={"Authorization": f"Bearer {AI_API_KEY}"},
+                        )
+                    else:
+                        response = await client.post(
+                            url,
+                            files=files,
+                            data=payload,
+                            headers={"Authorization": f"Bearer {AI_API_KEY}"},
+                        )
 
                     AIClient._handle_response(response, url)
 
