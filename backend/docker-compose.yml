@@ -1,0 +1,29 @@
+version: "3.9"
+
+# 本地起一个 PostgreSQL, 用于开发/压测
+# 启动: docker compose up -d postgres
+# 关闭: docker compose down
+# 切换: 在 backend/.env 把 DATABASE_URL 改成:
+#   postgresql+asyncpg://aigen:aigen@localhost:5432/aigen
+# 首次需要: pip install -r requirements.txt (包含 asyncpg)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aigen-postgres
+    environment:
+      POSTGRES_USER: aigen
+      POSTGRES_PASSWORD: aigen
+      POSTGRES_DB: aigen
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aigen -d aigen"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:
