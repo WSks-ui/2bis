@@ -2,8 +2,7 @@ import axios from 'axios'
 import { ElMessage } from 'element-plus'
 
 const api = axios.create({
-  baseURL: '/api',
-  timeout: 30000
+  baseURL: '/api'
 })
 
 api.interceptors.request.use(
