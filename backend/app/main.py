@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
-from app.routers import auth, points, membership, generate, payment, history
+from app.routers import auth, points, membership, generate, payment, history, edits
 
 app = FastAPI(title="AI Image Generator")
 
@@ -26,3 +26,4 @@ app.include_router(membership.router, prefix="/api")
 app.include_router(generate.router, prefix="/api")
 app.include_router(payment.router, prefix="/api")
 app.include_router(history.router, prefix="/api")
+app.include_router(edits.router, prefix="/api")

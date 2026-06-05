@@ -30,6 +30,7 @@ class UserInfo(BaseModel):
 class GenerateRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=2000)
     quality: str = Field(default="low")
+    size: str = Field(default="1024x1024")
 
 
 class GenerateResponse(BaseModel):
