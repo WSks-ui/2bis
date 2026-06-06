@@ -31,7 +31,7 @@ async def generate(
     print(f"[GENERATE] user={current_user.username} prompt={data.prompt[:50]}... quality={data.quality} cost={cost}")
 
     try:
-        image_url = await AIClient.generate(data.prompt, data.quality, data.size)
+        raw_data_url = await AIClient.generate(data.prompt, data.quality, data.size)
     except Exception as e:
         await PointManager.add_points(db, current_user.id, cost)
         await db.flush()
@@ -39,7 +39,8 @@ async def generate(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"AI generation failed: {str(e)}")
 
-    print(f"[GENERATE SUCCESS] image_url length={len(image_url)}")
+    image_url = await save_data_url(raw_data_url, current_user.id)
+    print(f"[GENERATE SUCCESS] image saved -> {image_url}")
 
     history = GenerateHistory(
         user_id=current_user.id,

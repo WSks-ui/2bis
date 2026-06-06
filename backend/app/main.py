@@ -22,7 +22,7 @@ app.add_middleware(
 
 # 把生成的图片目录挂成静态资源,前端可直接用 <img src="/static/images/...">
 os.makedirs(IMAGE_DIR, exist_ok=True)
-app.mount("/static", StaticFiles(directory=os.path.dirname(IMAGE_DIR) or "."), name="static")
+app.mount("/static/images", StaticFiles(directory=IMAGE_DIR), name="static_images")
 
 
 @app.on_event("startup")

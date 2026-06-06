@@ -52,7 +52,7 @@ async def edit_image(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"AI edit failed: {str(e)}")
 
-    image_url = save_data_url(raw_data_url, current_user.id)
+    image_url = await save_data_url(raw_data_url, current_user.id)
     print(f"[EDIT SUCCESS] image saved -> {image_url}")
 
     history = GenerateHistory(

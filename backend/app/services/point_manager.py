@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,17 +51,35 @@ class PointManager:
     async def activate_membership(
         db: AsyncSession, user_id: int, duration_days: int, points_bonus: int
     ) -> None:
-        from datetime import datetime, timedelta
-
-        result = await db.execute(select(User).where(User.id == user_id))
-        user = result.scalar_one_or_none()
-        if user is None:
-            return
         now = datetime.utcnow()
-        if user.is_member and user.member_expire_at and user.member_expire_at > now:
-            user.member_expire_at = user.member_expire_at + timedelta(days=duration_days)
+        # 原子递增积分
+        stmt_points = (
+            update(User)
+            .where(User.id == user_id)
+            .values(points=User.points + points_bonus)
+        )
+        await db.execute(stmt_points)
+
+        # 会员到期时间: 用 CASE 判断是否续期
+        # 如果当前是有效会员 → 在原到期时间上续期;否则从 now 开始
+        from sqlalchemy import case, select
+
+        # 先查出当前到期时间,再决定续期逻辑
+        result = await db.execute(select(User.is_member, User.member_expire_at).where(User.id == user_id))
+        row = result.first()
+        if row is None:
+            return
+
+        is_member, expire_at = row
+        if is_member and expire_at and expire_at > now:
+            new_expire = expire_at + timedelta(days=duration_days)
         else:
-            user.is_member = True
-            user.member_expire_at = now + timedelta(days=duration_days)
-        user.points += points_bonus
+            new_expire = now + timedelta(days=duration_days)
+
+        stmt_member = (
+            update(User)
+            .where(User.id == user_id)
+            .values(is_member=True, member_expire_at=new_expire)
+        )
+        await db.execute(stmt_member)
         await db.flush()
