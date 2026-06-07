@@ -150,12 +150,18 @@
             <span class="title-accent accent-green"></span>
             省钱对比
           </h2>
-          <p class="section-desc">以月均生成 100 张 4K 高档图为例</p>
+          <p class="section-desc">{{ calcDescription }}</p>
         </div>
 
         <div class="calc-card">
           <div class="calc-slider">
-            <label class="calc-label">我每月大约生成 <strong>{{ calcImages }}</strong> 张 4K 图</label>
+            <label class="calc-label">我每月大约生成 <strong>{{ calcImages }}</strong> 张 {{ calcQualityName }}</label>
+            <div class="calc-quality">
+              <button v-for="q in calcQualityOpts" :key="q.value"
+                :class="['calc-q-btn', { active: calcQuality === q.value }]"
+                @click="calcQuality = q.value"
+              >{{ q.label }}</button>
+            </div>
             <input
               type="range"
               v-model.number="calcImages"
@@ -177,18 +183,30 @@
             <div class="calc-col">
               <div class="calc-col-head">非会员</div>
               <div class="calc-col-value">¥{{ nonMemberCost.toFixed(1) }}</div>
-              <div class="calc-col-desc">{{ calcImages * 5 }} 积分 · 单价 0.17元</div>
+              <div class="calc-col-desc">{{ calcImages * calcNonMemberCost }} 积分 · 大包单价 0.167元</div>
             </div>
             <div class="calc-vs">VS</div>
             <div class="calc-col calc-col-member">
               <div class="calc-col-head member-head">月卡会员</div>
               <div class="calc-col-value">¥{{ memberCostCalc.toFixed(1) }}</div>
-              <div class="calc-col-desc">{{ calcImages * 3 }} 积分 · 含月费¥39</div>
+              <div class="calc-col-desc" v-if="memberExtraPoints > 0">
+                含月费¥39 · 赠送260分 · 另购{{ memberExtraPoints }}分
+              </div>
+              <div class="calc-col-desc" v-else>
+                含月费¥39 · 赠送260分已覆盖
+              </div>
             </div>
             <div class="calc-col calc-col-save">
               <div class="calc-col-head save-head">为你节省</div>
-              <div class="calc-col-value save-value">¥{{ (nonMemberCost - memberCostCalc).toFixed(1) }}</div>
-              <div class="calc-col-desc">省 {{ ((nonMemberCost - memberCostCalc) / nonMemberCost * 100).toFixed(0) }}%</div>
+              <div class="calc-col-value save-value">
+                {{ (nonMemberCost - memberCostCalc) > 0 ? '¥' + (nonMemberCost - memberCostCalc).toFixed(1) : '—' }}
+              </div>
+              <div class="calc-col-desc" v-if="(nonMemberCost - memberCostCalc) > 0">
+                省 {{ ((nonMemberCost - memberCostCalc) / nonMemberCost * 100).toFixed(0) }}%
+              </div>
+              <div class="calc-col-desc" v-else>
+                用量较低时会员暂不划算
+              </div>
             </div>
           </div>
         </div>
@@ -197,28 +215,28 @@
           <h3 class="subsection-title">透明价格对比表</h3>
           <div class="mini-compare">
             <div class="mini-row mini-head">
-              <span>生成 {{ calcImages }} 张 4K 图</span>
+              <span>生成 {{ calcImages }} 张 {{ calcQualityName }}</span>
               <span>积分消耗</span>
               <span>花费</span>
               <span>节省</span>
             </div>
             <div class="mini-row">
               <span class="label">非会员</span>
-              <span>{{ calcImages * 5 }} 分</span>
+              <span>{{ calcImages * calcNonMemberCost }} 分</span>
               <span>¥{{ nonMemberCost.toFixed(1) }}</span>
               <span class="muted">—</span>
             </div>
             <div class="mini-row mini-row-member">
               <span class="label">月卡会员</span>
-              <span>{{ calcImages * 3 }} 分</span>
+              <span>{{ calcImages * calcMemberCost }} 分</span>
               <span>¥{{ memberCostCalc.toFixed(1) }}</span>
-              <span class="save">省 ¥{{ (nonMemberCost - memberCostCalc).toFixed(1) }}</span>
+              <span class="save">{{ (nonMemberCost - memberCostCalc) > 0 ? '省 ¥' + (nonMemberCost - memberCostCalc).toFixed(1) : '持平' }}</span>
             </div>
             <div class="mini-row mini-row-member">
               <span class="label">年卡(月均)</span>
-              <span>{{ calcImages * 3 }} 分</span>
+              <span>{{ calcImages * calcMemberCost }} 分</span>
               <span>¥{{ yearlyCostCalc.toFixed(1) }}</span>
-              <span class="save">省 ¥{{ (nonMemberCost - yearlyCostCalc).toFixed(1) }}</span>
+              <span class="save">{{ (nonMemberCost - yearlyCostCalc) > 0 ? '省 ¥' + (nonMemberCost - yearlyCostCalc).toFixed(1) : '持平' }}</span>
             </div>
           </div>
         </div>
@@ -324,6 +342,31 @@ const pointsStore = usePointsStore()
 const userStore = useUserStore()
 
 const calcImages = ref(100)
+const calcQuality = ref('high')
+
+const PACK_PER_POINT = 0.1667
+
+const COST_NON_MEMBER = { low: 1, medium: 3, high: 5 }
+const COST_MEMBER = { low: 1, medium: 2, high: 3 }
+
+const calcQualityOpts = [
+  { label: '低质量', value: 'low' },
+  { label: '中等', value: 'medium' },
+  { label: '4K高档', value: 'high' },
+]
+
+const calcQualityName = computed(() => {
+  const m = { low: '低质量图', medium: '中等质量图', high: '4K 高档图' }
+  return m[calcQuality.value] || '4K 高档图'
+})
+
+const calcDescription = computed(() => {
+  const m = { low: '低质量', medium: '中等质量', high: '4K 高档' }
+  return `以月均生成 ${calcImages.value} 张 ${m[calcQuality.value] || '4K 高档'}图为例`
+})
+
+const calcNonMemberCost = computed(() => COST_NON_MEMBER[calcQuality.value] || 5)
+const calcMemberCost = computed(() => COST_MEMBER[calcQuality.value] || 3)
 
 const pointsPacks = reactive([
   { id: 1, name: '小包', price: 10, points: 50, perPoint: '0.200', tag: '临时补充', loading: false },
@@ -341,16 +384,35 @@ const payDialogVisible = ref(false)
 const paying = ref(false)
 const currentOrder = ref(null)
 
-const nonMemberCost = computed(() => calcImages.value * 5 * 0.1667)
+const nonMemberCost = computed(() =>
+  calcImages.value * calcNonMemberCost.value * PACK_PER_POINT
+)
+
 const memberCostCalc = computed(() => {
-  const baseCost = calcImages.value * 3 * 0.15
-  const memberFee = 39
-  return baseCost + memberFee
+  const needed = calcImages.value * calcMemberCost.value
+  const bonus = 260
+  const extraPoints = Math.max(0, needed - bonus)
+  const extraCost = extraPoints * PACK_PER_POINT
+  return 39 + extraCost
 })
+
 const yearlyCostCalc = computed(() => {
-  const baseCost = calcImages.value * 3 * 0.148
-  const memberFee = 399 / 12
-  return baseCost + memberFee
+  const needed = calcImages.value * calcMemberCost.value
+  const bonusPerMonth = Math.floor(2700 / 12)
+  const extraPoints = Math.max(0, needed - bonusPerMonth)
+  const extraCost = extraPoints * PACK_PER_POINT
+  return 399 / 12 + extraCost
+})
+
+const memberExtraPoints = computed(() => {
+  const needed = calcImages.value * calcMemberCost.value
+  return Math.max(0, needed - 260)
+})
+
+const yearlyExtraPoints = computed(() => {
+  const needed = calcImages.value * calcMemberCost.value
+  const bonusPerMonth = Math.floor(2700 / 12)
+  return Math.max(0, needed - bonusPerMonth)
 })
 
 async function buyPack(orderType, pack) {
@@ -724,6 +786,38 @@ async function mockPay() {
 
 .calc-slider {
   margin-bottom: 32px;
+}
+
+.calc-quality {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 20px;
+  margin-top: 6px;
+}
+
+.calc-q-btn {
+  padding: 6px 16px;
+  background: rgba(250, 249, 245, 0.03);
+  border: 1px solid rgba(232, 230, 220, 0.1);
+  border-radius: 20px;
+  color: var(--color-mid);
+  font-family: var(--font-heading);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.calc-q-btn:hover {
+  border-color: rgba(232, 230, 220, 0.2);
+  color: var(--color-light);
+  transform: translateY(-1px);
+}
+
+.calc-q-btn.active {
+  background: rgba(120, 140, 93, 0.12);
+  border-color: rgba(120, 140, 93, 0.3);
+  color: var(--color-green);
 }
 
 .calc-label {
