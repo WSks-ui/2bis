@@ -1,10 +1,12 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models import User, Order, OrderStatus
+from app.models import Order, OrderStatus, User
 from app.schemas import OrderCreate, OrderResponse
 from app.services.payment_simulator import PaymentSimulator
 from app.services.point_manager import PointManager
@@ -64,37 +66,43 @@ async def mock_pay_callback(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(Order).where(Order.order_no == order_no))
+    result = await db.execute(
+        select(Order).where(Order.order_no == order_no).with_for_update()
+    )
     order = result.scalar_one_or_none()
     if order is None:
         raise HTTPException(status_code=404, detail="Order not found")
     if order.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Order does not belong to current user")
 
-    order = await PaymentSimulator.process_callback(db, order_no)
+    already_paid = order.status == OrderStatus.PAID
+    if not already_paid:
+        order.status = OrderStatus.PAID
+        order.paid_at = datetime.utcnow()
 
-    if order.order_type == "points_pack":
-        pack = next(
-            (p for p in PaymentSimulator.POINTS_PACKS if p["id"] == order.product_id),
-            None,
-        )
-        if pack:
-            await PointManager.add_points(db, current_user.id, pack["points"])
-    elif order.order_type == "membership":
-        plan = next(
-            (p for p in PaymentSimulator.MEMBERSHIP_PLANS if p["id"] == order.product_id),
-            None,
-        )
-        if plan:
-            await PointManager.activate_membership(
-                db, current_user.id, plan["duration_days"], plan["points_bonus"]
+        if order.order_type == "points_pack":
+            pack = next(
+                (p for p in PaymentSimulator.POINTS_PACKS if p["id"] == order.product_id),
+                None,
             )
+            if pack:
+                await PointManager.add_points(db, current_user.id, pack["points"])
+        elif order.order_type == "membership":
+            plan = next(
+                (p for p in PaymentSimulator.MEMBERSHIP_PLANS if p["id"] == order.product_id),
+                None,
+            )
+            if plan:
+                await PointManager.activate_membership(
+                    db, current_user.id, plan["duration_days"], plan["points_bonus"]
+                )
 
     await db.commit()
     await db.refresh(current_user)
+    await db.refresh(order)
 
     return {
-        "message": "支付成功",
+        "message": "支付成功" if not already_paid else "订单已支付",
         "order_no": order.order_no,
         "status": order.status.value,
         "points": current_user.points,

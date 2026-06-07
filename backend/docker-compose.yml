@@ -1,12 +1,5 @@
 version: "3.9"
 
-# 本地起一个 PostgreSQL, 用于开发/压测
-# 启动: docker compose up -d postgres
-# 关闭: docker compose down
-# 切换: 在 backend/.env 把 DATABASE_URL 改成:
-#   postgresql+asyncpg://aigen:aigen@localhost:5432/aigen
-# 首次需要: pip install -r requirements.txt (包含 asyncpg)
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -25,5 +18,20 @@ services:
       timeout: 3s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: aigen-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
 volumes:
   pgdata:
+  redisdata:

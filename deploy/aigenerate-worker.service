@@ -1,0 +1,18 @@
+[Unit]
+Description=AI Image Generator Worker
+After=network.target redis.service postgresql.service
+Wants=network-online.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/aigen/backend
+ExecStart=/opt/aigen/backend/venv/bin/python /opt/aigen/backend/worker.py
+Restart=always
+RestartSec=5
+EnvironmentFile=/opt/aigen/backend/.env
+KillSignal=SIGTERM
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target
