@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends
+import os
+
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +27,7 @@ async def list_history(
     return [
         HistoryItem(
             id=h.id,
+            task_id=h.task_id,
             prompt=h.prompt,
             image_url=h.image_url,
             quality=h.quality,
@@ -33,3 +36,32 @@ async def list_history(
         )
         for h in histories
     ]
+
+
+@router.delete("/{history_id}", status_code=204)
+async def delete_history(
+    history_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(GenerateHistory).where(
+            GenerateHistory.id == history_id,
+            GenerateHistory.user_id == current_user.id,
+        )
+    )
+    record = result.scalar_one_or_none()
+    if record is None:
+        raise HTTPException(status_code=404, detail="History not found")
+
+    image_url = record.image_url
+    await db.delete(record)
+    await db.commit()
+
+    if image_url and image_url.startswith("/static/"):
+        try:
+            file_path = image_url[len("/"):]
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except OSError:
+            pass

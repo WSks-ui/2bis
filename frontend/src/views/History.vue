@@ -38,14 +38,14 @@
           :key="record.id"
           class="history-card"
         >
-          <div class="card-thumb">
+          <div class="card-thumb" @click="openPreview(record)">
             <img :src="record.image_url" :alt="record.prompt" loading="lazy" />
             <span :class="['quality-tag', `quality-${record.quality}`]">
               {{ qualityLabel(record.quality) }}
             </span>
           </div>
           <div class="card-info">
-            <p class="card-prompt">{{ record.prompt }}</p>
+            <p class="card-prompt" @click="openPreview(record)">{{ record.prompt }}</p>
             <div class="card-meta">
               <span class="meta-cost">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -54,10 +54,69 @@
                 </svg>
                 {{ record.points_cost }} 积分
               </span>
-              <span class="meta-time">{{ formatTime(record.created_at) }}</span>
+              <div class="meta-right">
+                <span class="meta-time">{{ formatTime(record.created_at) }}</span>
+                <button class="card-delete-btn" @click.stop="confirmDelete(record)" title="删除">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
         </article>
+      </div>
+    </div>
+
+    <div v-if="previewRecord || previewClosing" :class="['preview-overlay', { 'preview-out': previewClosing }]" @click.self="closePreview">
+      <div :class="['preview-modal', { 'preview-modal-out': previewClosing }]">
+        <button class="preview-close" @click="closePreview" title="关闭">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+        <div class="preview-image-wrap">
+          <img :src="(previewRecord || {}).image_url" :alt="(previewRecord || {}).prompt" />
+        </div>
+        <div class="preview-info" v-if="previewRecord">
+          <p class="preview-prompt">{{ previewRecord.prompt }}</p>
+          <div class="preview-meta">
+            <span class="preview-tag">{{ qualityLabel(previewRecord.quality) }}</span>
+            <span class="preview-cost">{{ previewRecord.points_cost }} 积分</span>
+            <span class="preview-time">{{ formatTime(previewRecord.created_at) }}</span>
+          </div>
+          <div class="preview-actions">
+            <button class="preview-btn preview-btn-download" @click="downloadImage(previewRecord)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              下载
+            </button>
+            <button class="preview-btn preview-btn-delete" @click="confirmDelete(previewRecord)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              </svg>
+              删除
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="deleteTarget" class="confirm-overlay" @click.self="cancelDelete">
+      <div class="confirm-box">
+        <p class="confirm-title">确认删除这条记录？</p>
+        <p class="confirm-text">删除后不可恢复，生成图片也会被一并删除</p>
+        <div class="confirm-actions">
+          <button class="confirm-btn confirm-cancel" @click="cancelDelete">取消</button>
+          <button class="confirm-btn confirm-ok" @click="doDelete" :disabled="deleting">
+            {{ deleting ? '删除中…' : '确认删除' }}
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -70,17 +129,78 @@ import NavBar from '../components/NavBar.vue'
 
 const records = ref([])
 const loading = ref(true)
+const previewRecord = ref(null)
+const previewClosing = ref(false)
+const deleteTarget = ref(null)
+const deleting = ref(false)
 
-onMounted(async () => {
+onMounted(() => {
+  fetchHistory()
+})
+
+async function fetchHistory() {
+  loading.value = true
   try {
     const res = await api.get('/history')
-    records.value = res.data.records || res.data || []
+    records.value = Array.isArray(res.data) ? res.data : (res.data.records || [])
   } catch (e) {
     console.error('Failed to fetch history', e)
   } finally {
     loading.value = false
   }
-})
+}
+
+function openPreview(record) {
+  previewClosing.value = false
+  previewRecord.value = record
+}
+
+function closePreview() {
+  if (previewClosing.value) return
+  previewClosing.value = true
+  setTimeout(() => {
+    previewRecord.value = null
+    previewClosing.value = false
+  }, 300)
+}
+
+function confirmDelete(record) {
+  deleteTarget.value = record
+}
+
+function cancelDelete() {
+  deleteTarget.value = null
+}
+
+async function doDelete() {
+  if (!deleteTarget.value) return
+  deleting.value = true
+  try {
+    await api.delete(`/history/${deleteTarget.value.id}`)
+    records.value = records.value.filter((r) => r.id !== deleteTarget.value.id)
+    if (previewRecord.value && previewRecord.value.id === deleteTarget.value.id) {
+      closePreview()
+    }
+    deleteTarget.value = null
+  } catch (e) {
+    console.error('Failed to delete history', e)
+  } finally {
+    deleting.value = false
+  }
+}
+
+function downloadImage(record) {
+  const url = record.image_url
+  if (!url) return
+  if (url.startsWith('data:')) {
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `2bis-${record.id}.png`
+    a.click()
+  } else {
+    window.open(url, '_blank')
+  }
+}
 
 function qualityLabel(quality) {
   const map = { low: '低质量', medium: '中等', high: '高质量' }
@@ -362,6 +482,300 @@ function formatTime(timeStr) {
   font-family: var(--font-heading);
   font-size: 12px;
   color: var(--color-mid);
+}
+
+.meta-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.card-delete-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--color-mid);
+  cursor: pointer;
+  opacity: 0.4;
+  transition: all 0.2s ease;
+}
+
+.history-card:hover .card-delete-btn {
+  opacity: 1;
+  border-color: rgba(232, 230, 220, 0.12);
+}
+
+.card-delete-btn:hover {
+  color: #d75959;
+  background: rgba(217, 87, 87, 0.1);
+  border-color: rgba(217, 87, 87, 0.2);
+}
+
+.preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(10, 10, 9, 0.92);
+  backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  animation: overlay-in 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+.preview-overlay.preview-out {
+  animation: overlay-out 0.25s ease forwards;
+}
+
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes overlay-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.preview-modal {
+  position: relative;
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  background: rgba(28, 28, 26, 0.95);
+  border: 1px solid rgba(232, 230, 220, 0.1);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  animation: modal-in 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+.preview-modal.preview-modal-out {
+  animation: modal-out 0.22s cubic-bezier(0.55, 0, 1, 0.45) forwards;
+}
+
+@keyframes modal-in {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes modal-out {
+  from { opacity: 1; transform: scale(1) translateY(0); }
+  to { opacity: 0; transform: scale(0.92) translateY(6px); }
+}
+
+.preview-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 10;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(232, 230, 220, 0.08);
+  border: 1px solid rgba(232, 230, 220, 0.12);
+  border-radius: 50%;
+  color: var(--color-light);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
+}
+
+.preview-close:hover {
+  background: rgba(232, 230, 220, 0.16);
+  border-color: rgba(232, 230, 220, 0.24);
+}
+
+.preview-image-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-height: 65vh;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.preview-image-wrap img {
+  max-width: 100%;
+  max-height: 65vh;
+  object-fit: contain;
+}
+
+.preview-info {
+  padding: 20px 24px;
+  border-top: 1px solid rgba(232, 230, 220, 0.06);
+}
+
+.preview-prompt {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--color-light);
+  margin-bottom: 14px;
+  max-height: 80px;
+  overflow-y: auto;
+}
+
+.preview-meta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.preview-tag {
+  font-family: var(--font-heading);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: rgba(217, 119, 87, 0.12);
+  color: var(--color-orange);
+  border: 1px solid rgba(217, 119, 87, 0.2);
+}
+
+.preview-cost {
+  font-family: var(--font-heading);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-green);
+}
+
+.preview-time {
+  font-family: var(--font-heading);
+  font-size: 12px;
+  color: var(--color-mid);
+}
+
+.preview-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.preview-btn {
+  padding: 8px 20px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-heading);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+  border: 1px solid;
+}
+
+.preview-btn-download {
+  background: rgba(106, 155, 204, 0.1);
+  border-color: rgba(106, 155, 204, 0.2);
+  color: var(--color-blue);
+}
+
+.preview-btn-download:hover {
+  background: rgba(106, 155, 204, 0.2);
+  border-color: rgba(106, 155, 204, 0.35);
+}
+
+.preview-btn-delete {
+  background: rgba(217, 87, 87, 0.08);
+  border-color: rgba(217, 87, 87, 0.15);
+  color: #d75959;
+}
+
+.preview-btn-delete:hover {
+  background: rgba(217, 87, 87, 0.16);
+  border-color: rgba(217, 87, 87, 0.3);
+}
+
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: rgba(10, 10, 9, 0.7);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: overlay-in 0.2s ease both;
+}
+
+.confirm-box {
+  background: rgba(28, 28, 26, 0.98);
+  border: 1px solid rgba(232, 230, 220, 0.1);
+  border-radius: var(--radius-lg);
+  padding: 32px;
+  max-width: 380px;
+  width: 90%;
+  text-align: center;
+  animation: modal-in 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+.confirm-title {
+  font-family: var(--font-heading);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--color-light);
+  margin-bottom: 10px;
+}
+
+.confirm-text {
+  font-size: 14px;
+  color: var(--color-mid);
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.confirm-btn {
+  padding: 10px 28px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-heading);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid;
+}
+
+.confirm-cancel {
+  background: rgba(232, 230, 220, 0.06);
+  border-color: rgba(232, 230, 220, 0.12);
+  color: var(--color-mid);
+}
+
+.confirm-cancel:hover {
+  background: rgba(232, 230, 220, 0.1);
+}
+
+.confirm-ok {
+  background: rgba(217, 87, 87, 0.15);
+  border-color: rgba(217, 87, 87, 0.3);
+  color: #f06a6a;
+}
+
+.confirm-ok:hover:not(:disabled) {
+  background: #d75959;
+  color: #fff;
+  border-color: #d75959;
+}
+
+.confirm-ok:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 @media (max-width: 640px) {
