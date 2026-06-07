@@ -22,6 +22,8 @@ class UserInfo(BaseModel):
     id: int
     username: str
     points: int
+    free_points: int = 0
+    free_points_expire_at: Optional[datetime] = None
     is_member: bool
     member_expire_at: Optional[datetime] = None
     created_at: datetime
@@ -42,8 +44,24 @@ class GenerateResponse(BaseModel):
     created_at: datetime
 
 
+class GenerationTaskResponse(BaseModel):
+    id: int
+    mode: str
+    prompt: str
+    quality: str
+    size: str
+    status: str
+    points_cost: int
+    image_url: Optional[str] = None
+    error_message: Optional[str] = None
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+
+
 class HistoryItem(BaseModel):
     id: int
+    task_id: Optional[int] = None
     prompt: str
     image_url: Optional[str] = None
     quality: str
@@ -82,8 +100,20 @@ class MembershipPlan(BaseModel):
     duration_days: int
 
 
+class LoginCheckinResponse(BaseModel):
+    checkin_available: bool
+    consecutive_days: int = 0
+    day_number: int = 0
+    reward: int = 0
+    free_points: int = 0
+    free_points_expire_at: Optional[datetime] = None
+    bonus_rule: Optional[str] = None
+
+
 class PointsBalanceResponse(BaseModel):
     username: str
     points: int
+    free_points: int = 0
+    free_points_expire_at: Optional[datetime] = None
     is_member: bool
     member_expire_at: Optional[datetime] = None

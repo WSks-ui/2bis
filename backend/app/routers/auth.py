@@ -9,8 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import ACCESS_TOKEN_EXPIRE_DAYS, ALGORITHM, SECRET_KEY
 from app.database import get_db
+from app.dependencies import get_current_user
 from app.models import User
-from app.schemas import TokenResponse, UserInfo, UserLogin, UserRegister
+from app.schemas import LoginCheckinResponse, TokenResponse, UserInfo, UserLogin, UserRegister
+from app.services.checkin_service import checkin_status, perform_checkin
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -40,6 +42,8 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
         id=user.id,
         username=user.username,
         points=user.points,
+        free_points=user.free_points,
+        free_points_expire_at=user.free_points_expire_at,
         is_member=user.is_member,
         member_expire_at=user.member_expire_at,
         created_at=user.created_at,
@@ -66,3 +70,31 @@ async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
     payload = {"sub": str(user.id), "exp": expire}
     access_token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
     return TokenResponse(access_token=access_token)
+
+
+@router.post("/checkin", response_model=LoginCheckinResponse)
+async def daily_checkin(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    status = checkin_status(current_user)
+    if not status["checkin_available"]:
+        return LoginCheckinResponse(**status)
+
+    result = await perform_checkin(current_user, db)
+    return LoginCheckinResponse(
+        checkin_available=True,
+        consecutive_days=result["consecutive_days"],
+        day_number=result["day_number"],
+        reward=result["reward"],
+        free_points=result["free_points"],
+        free_points_expire_at=result["free_points_expire_at"],
+        bonus_rule=checkin_status(current_user)["bonus_rule"],
+    )
+
+
+@router.get("/checkin/status", response_model=LoginCheckinResponse)
+async def get_checkin_status(
+    current_user: User = Depends(get_current_user),
+):
+    return LoginCheckinResponse(**checkin_status(current_user))
