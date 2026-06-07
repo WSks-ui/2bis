@@ -8,6 +8,7 @@ from app.config import IMAGE_DIR
 from app.database import init_db
 from app.routers import auth, points, membership, generate, payment, history, edits
 from app.services.ai_client import close_client
+from app.services.task_queue import close_redis
 
 app = FastAPI(title="AI Image Generator")
 
@@ -32,8 +33,8 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    # 关闭复用的 httpx client,释放连接池
     await close_client()
+    await close_redis()
 
 
 app.include_router(auth.router, prefix="/api")

@@ -1,21 +1,36 @@
-import traceback
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import MAX_UPLOAD_SIZE
+from app.config import GENERATION_MAX_RETRIES, MAX_UPLOAD_SIZE
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models import GenerateHistory, User
-from app.services.ai_client import AIClient
-from app.services.image_storage import save_data_url
+from app.models import GenerationTask, GenerationTaskStatus, User
+from app.schemas import GenerationTaskResponse
 from app.services.point_manager import PointManager
+from app.services.task_queue import enqueue_generation_task
+from app.services.upload_storage import save_upload_file
 
 router = APIRouter(prefix="/edits", tags=["edits"])
 
 
-@router.post("")
+def task_response(task: GenerationTask) -> GenerationTaskResponse:
+    return GenerationTaskResponse(
+        id=task.id,
+        mode=task.mode,
+        prompt=task.prompt,
+        quality=task.quality,
+        size=task.size,
+        status=task.status.value,
+        points_cost=task.points_cost,
+        image_url=task.image_url,
+        error_message=task.error_message,
+        created_at=task.created_at,
+        started_at=task.started_at,
+        finished_at=task.finished_at,
+    )
+
+
+@router.post("", response_model=GenerationTaskResponse)
 async def edit_image(
     image: UploadFile = File(...),
     prompt: str = Form(..., min_length=1, max_length=2000),
@@ -41,37 +56,28 @@ async def edit_image(
     if not deducted:
         raise HTTPException(status_code=400, detail="Insufficient points")
 
-    print(f"[EDIT] user={current_user.username} prompt={prompt[:50]}... quality={quality} size={size} cost={cost}")
+    source_image_path = await save_upload_file(image_bytes, current_user.id, image.filename)
+    task = GenerationTask(
+        user_id=current_user.id,
+        mode="edit",
+        prompt=prompt.strip(),
+        quality=quality,
+        size=size,
+        points_cost=cost,
+        source_image_path=source_image_path,
+        max_retries=GENERATION_MAX_RETRIES,
+    )
+    db.add(task)
+    await db.commit()
+    await db.refresh(task)
 
     try:
-        raw_data_url = await AIClient.edit(image_bytes, prompt, quality, size, image.filename or "image.png")
+        await enqueue_generation_task(task.id)
     except Exception as e:
         await PointManager.add_points(db, current_user.id, cost)
-        await db.flush()
-        print(f"[EDIT ERROR] {e}")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"AI edit failed: {str(e)}")
+        task.status = GenerationTaskStatus.REFUNDED
+        task.error_message = f"Task queue unavailable: {e}"
+        await db.commit()
+        raise HTTPException(status_code=503, detail="任务队列暂不可用，请稍后重试")
 
-    image_url = await save_data_url(raw_data_url, current_user.id)
-    print(f"[EDIT SUCCESS] image saved -> {image_url}")
-
-    history = GenerateHistory(
-        user_id=current_user.id,
-        prompt=f"[图生图] {prompt}",
-        image_url=image_url,
-        quality=quality,
-        points_cost=cost,
-        created_at=datetime.utcnow(),
-    )
-    db.add(history)
-    await db.commit()
-    await db.refresh(history)
-
-    return {
-        "id": history.id,
-        "prompt": history.prompt,
-        "image_url": history.image_url,
-        "quality": history.quality,
-        "points_cost": history.points_cost,
-        "created_at": history.created_at.isoformat(),
-    }
+    return task_response(task)

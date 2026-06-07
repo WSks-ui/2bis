@@ -1,20 +1,38 @@
-from datetime import datetime
+import os
+
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-import traceback
 
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models import GenerateHistory, User
-from app.schemas import GenerateRequest, GenerateResponse
-from app.services.ai_client import AIClient
-from app.services.image_storage import save_data_url
+from app.config import GENERATION_MAX_RETRIES
+from app.models import GenerationTask, GenerationTaskStatus, User
+from app.schemas import GenerateRequest, GenerationTaskResponse
 from app.services.point_manager import PointManager
+from app.services.task_queue import enqueue_generation_task
 
 router = APIRouter(prefix="/generate", tags=["generate"])
 
 
-@router.post("", response_model=GenerateResponse)
+def task_response(task: GenerationTask) -> GenerationTaskResponse:
+    return GenerationTaskResponse(
+        id=task.id,
+        mode=task.mode,
+        prompt=task.prompt,
+        quality=task.quality,
+        size=task.size,
+        status=task.status.value,
+        points_cost=task.points_cost,
+        image_url=task.image_url,
+        error_message=task.error_message,
+        created_at=task.created_at,
+        started_at=task.started_at,
+        finished_at=task.finished_at,
+    )
+
+
+@router.post("", response_model=GenerationTaskResponse)
 async def generate(
     data: GenerateRequest,
     db: AsyncSession = Depends(get_db),
@@ -28,37 +46,87 @@ async def generate(
     if not deducted:
         raise HTTPException(status_code=400, detail="Insufficient points")
 
-    print(f"[GENERATE] user={current_user.username} prompt={data.prompt[:50]}... quality={data.quality} cost={cost}")
+    task = GenerationTask(
+        user_id=current_user.id,
+        mode="text2img",
+        prompt=data.prompt.strip(),
+        quality=data.quality,
+        size=data.size,
+        points_cost=cost,
+        max_retries=GENERATION_MAX_RETRIES,
+    )
+    db.add(task)
+    await db.commit()
+    await db.refresh(task)
 
     try:
-        raw_data_url = await AIClient.generate(data.prompt, data.quality, data.size)
+        await enqueue_generation_task(task.id)
     except Exception as e:
         await PointManager.add_points(db, current_user.id, cost)
-        await db.flush()
-        print(f"[GENERATE ERROR] {e}")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"AI generation failed: {str(e)}")
+        task.status = GenerationTaskStatus.REFUNDED
+        task.error_message = f"Task queue unavailable: {e}"
+        await db.commit()
+        raise HTTPException(status_code=503, detail="任务队列暂不可用，请稍后重试")
 
-    image_url = await save_data_url(raw_data_url, current_user.id)
-    print(f"[GENERATE SUCCESS] image saved -> {image_url}")
+    return task_response(task)
 
-    history = GenerateHistory(
-        user_id=current_user.id,
-        prompt=data.prompt,
-        image_url=image_url,
-        quality=data.quality,
-        points_cost=cost,
-        created_at=datetime.utcnow(),
+
+@router.get("/tasks", response_model=list[GenerationTaskResponse])
+async def list_tasks(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(GenerationTask)
+        .where(GenerationTask.user_id == current_user.id)
+        .order_by(GenerationTask.created_at.desc())
+        .limit(50)
     )
-    db.add(history)
+    return [task_response(task) for task in result.scalars().all()]
+
+
+@router.get("/tasks/{task_id}", response_model=GenerationTaskResponse)
+async def get_task(
+    task_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(GenerationTask).where(
+            GenerationTask.id == task_id,
+            GenerationTask.user_id == current_user.id,
+        )
+    )
+    task = result.scalar_one_or_none()
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return task_response(task)
+
+
+@router.delete("/tasks/{task_id}", status_code=204)
+async def delete_task(
+    task_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(GenerationTask).where(
+            GenerationTask.id == task_id,
+            GenerationTask.user_id == current_user.id,
+        )
+    )
+    task = result.scalar_one_or_none()
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    image_url = task.image_url
+    await db.delete(task)
     await db.commit()
-    await db.refresh(history)
 
-    return GenerateResponse(
-        id=history.id,
-        prompt=history.prompt,
-        image_url=history.image_url,
-        quality=history.quality,
-        points_cost=history.points_cost,
-        created_at=history.created_at,
-    )
+    if image_url and image_url.startswith("/static/"):
+        try:
+            file_path = image_url[len("/"):]
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except OSError:
+            pass
