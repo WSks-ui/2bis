@@ -57,9 +57,9 @@
 
           <div class="command-quality">
             <button v-for="q in qualityOpts" :key="q.value"
-              :class="['cmd-q-btn', { active: quality === q.value }]"
+              :class="['cmd-q-btn', { active: quality === q.value, 'q-free': q.free }]"
               @click="quality = q.value"
-            >{{ q.label }}</button>
+            >{{ q.label }}<span v-if="q.free" class="q-free-tag">免</span></button>
           </div>
 
           <div class="command-size">
@@ -166,9 +166,9 @@ const modeDefs = [
 ]
 
 const qualityOpts = [
-  { label: '低', value: 'low' },
-  { label: '中', value: 'medium' },
-  { label: '高', value: 'high' },
+  { label: '低', value: 'low', free: true },
+  { label: '中', value: 'medium', free: true },
+  { label: '高', value: 'high', free: false },
 ]
 
 const aspectOpts = [
@@ -259,8 +259,14 @@ function handleDocClick(e) {
   if (!target.closest('.cmd-dropdown') && !target.closest('.cmd-drop-panel')) closeDropdowns()
 }
 
-onMounted(() => document.addEventListener('click', handleDocClick, true))
-onBeforeUnmount(() => document.removeEventListener('click', handleDocClick, true))
+onMounted(() => {
+  document.addEventListener('click', handleDocClick, true)
+  tasksStore.fetchTasks().catch(() => {})
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleDocClick, true)
+  tasksStore.stopAllPolling()
+})
 
 watch(aspect, (v) => {
   const first = sizeMap[v]?.[0]?.value
@@ -598,6 +604,24 @@ onMounted(() => userStore.fetchUserInfo())
   border-color: rgba(217, 119, 87, 0.2);
   color: var(--color-orange);
   transform: translateY(0);
+}
+
+.q-free-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(106, 155, 204, 0.2);
+  color: var(--color-blue);
+  font-size: 9px;
+  font-weight: 700;
+  margin-left: 2px;
+}
+
+.cmd-q-btn.active .q-free-tag {
+  background: rgba(106, 155, 204, 0.25);
 }
 
 .command-size {

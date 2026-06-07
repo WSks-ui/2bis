@@ -1,5 +1,5 @@
 <template>
-  <div :class="['task-card', `task-card--${task.status}`]" @click="handleClick">
+  <div :class="['task-card', `task-card--${task.status}`]">
     <div v-if="task.status === 'done' && task.imageUrl" class="task-image-wrap">
       <img :src="task.imageUrl" :alt="task.prompt" class="task-image" loading="lazy" />
       <div class="task-image-actions">

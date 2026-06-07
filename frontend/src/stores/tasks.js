@@ -3,77 +3,165 @@ import { ref } from 'vue'
 import api from '../api'
 import { usePointsStore } from './points'
 
-let nextId = 1
+const POLL_INTERVAL = 5000
+const ACTIVE_STATUSES = ['pending', 'processing']
 
 export const useTasksStore = defineStore('tasks', () => {
   const tasks = ref([])
+  const pollingTimers = new Map()
 
-  function addTask({ mode, prompt, quality, size, refImage, refPreview }) {
-    const id = `task-${Date.now()}-${nextId++}`
-    const task = {
-      id,
+  function normalizeTask(data, local = {}) {
+    return {
+      id: data.id,
+      mode: data.mode || local.mode || 'text2img',
+      prompt: data.prompt || local.prompt || '',
+      quality: data.quality || local.quality || 'low',
+      size: data.size || local.size || '1024x1024',
+      refPreview: local.refPreview || '',
+      status: mapStatus(data.status),
+      rawStatus: data.status,
+      imageUrl: data.image_url || '',
+      error: data.error_message || '',
+      pointsCost: data.points_cost || 0,
+      createdAt: data.created_at || local.createdAt || new Date().toISOString(),
+      startedAt: data.started_at || null,
+      finishedAt: data.finished_at || null,
+    }
+  }
+
+  function mapStatus(status) {
+    if (status === 'success') return 'done'
+    if (status === 'failed' || status === 'refunded') return 'failed'
+    if (status === 'processing') return 'generating'
+    return 'queued'
+  }
+
+  function isActive(task) {
+    return ACTIVE_STATUSES.includes(task.rawStatus)
+  }
+
+  function upsertTask(task) {
+    const idx = tasks.value.findIndex((t) => t.id === task.id)
+    if (idx === -1) {
+      tasks.value.push(task)
+    } else {
+      tasks.value[idx] = { ...tasks.value[idx], ...task }
+    }
+  }
+
+  async function addTask({ mode, prompt, quality, size, refImage, refPreview }) {
+    const local = {
+      id: `local-${Date.now()}`,
       mode,
       prompt,
       quality,
       size,
-      refImage: refImage || null,
       refPreview: refPreview || '',
       status: 'queued',
+      rawStatus: 'pending',
       imageUrl: '',
       error: '',
-      createdAt: Date.now(),
+      createdAt: new Date().toISOString(),
     }
-    tasks.value.push(task)
-    executeTask(id)
+    tasks.value.push(local)
+
+    try {
+      let res
+      if (mode === 'text2img') {
+        res = await api.post('/generate', { prompt, quality, size })
+      } else {
+        const formData = new FormData()
+        formData.append('image', refImage)
+        formData.append('prompt', prompt)
+        formData.append('quality', quality)
+        formData.append('size', size)
+        res = await api.post('/edits', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+      }
+
+      const task = normalizeTask(res.data, local)
+      const localIdx = tasks.value.findIndex((t) => t.id === local.id)
+      if (localIdx !== -1) tasks.value.splice(localIdx, 1, task)
+      else upsertTask(task)
+      startPolling(task.id)
+      await refreshBalance()
+    } catch (e) {
+      const localTask = tasks.value.find((t) => t.id === local.id)
+      if (localTask) {
+        localTask.status = 'failed'
+        localTask.rawStatus = 'failed'
+        localTask.error = e.response?.data?.detail || '任务提交失败，请重试'
+      }
+      await refreshBalance()
+    }
   }
 
-  function removeTask(id) {
+  async function removeTask(id) {
+    stopPolling(id)
+    try {
+      await api.delete(`/generate/tasks/${id}`)
+    } catch (_) {}
     const idx = tasks.value.findIndex((t) => t.id === id)
     if (idx !== -1) tasks.value.splice(idx, 1)
   }
 
   function clearCompleted() {
+    tasks.value
+      .filter((t) => t.status === 'done' || t.status === 'failed')
+      .forEach((t) => stopPolling(t.id))
     tasks.value = tasks.value.filter(
       (t) => t.status !== 'done' && t.status !== 'failed'
     )
   }
 
-  async function executeTask(id) {
-    const task = tasks.value.find((t) => t.id === id)
-    if (!task) return
-    task.status = 'generating'
+  async function fetchTasks() {
+    const res = await api.get('/generate/tasks')
+    const remoteTasks = res.data.map((item) => normalizeTask(item))
+    tasks.value = remoteTasks
+    remoteTasks.forEach((task) => {
+      if (isActive(task)) startPolling(task.id)
+    })
+  }
 
-    try {
-      let res
-      if (task.mode === 'text2img') {
-        res = await api.post('/generate', {
-          prompt: task.prompt,
-          quality: task.quality,
-          size: task.size,
-        })
-      } else {
-        const formData = new FormData()
-        formData.append('image', task.refImage)
-        formData.append('prompt', task.prompt)
-        formData.append('quality', task.quality)
-        formData.append('size', task.size)
-        res = await api.post('/edits', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        })
-      }
-      task.imageUrl = res.data.image_url
-      task.status = 'done'
-    } catch (e) {
-      task.status = 'failed'
-      task.error = e.response?.data?.detail || '生成失败，请重试'
+  async function fetchTask(id) {
+    const res = await api.get(`/generate/tasks/${id}`)
+    const current = tasks.value.find((t) => t.id === id)
+    const task = normalizeTask(res.data, current || {})
+    upsertTask(task)
+    if (!isActive(task)) {
+      stopPolling(id)
+      await refreshBalance()
     }
+  }
 
+  function startPolling(id) {
+    if (pollingTimers.has(id)) return
+    const timer = window.setInterval(() => {
+      fetchTask(id).catch(() => {})
+    }, POLL_INTERVAL)
+    pollingTimers.set(id, timer)
+    fetchTask(id).catch(() => {})
+  }
+
+  function stopPolling(id) {
+    const timer = pollingTimers.get(id)
+    if (timer) {
+      window.clearInterval(timer)
+      pollingTimers.delete(id)
+    }
+  }
+
+  function stopAllPolling() {
+    pollingTimers.forEach((timer) => window.clearInterval(timer))
+    pollingTimers.clear()
+  }
+
+  async function refreshBalance() {
     const pointsStore = usePointsStore()
     try {
       await pointsStore.fetchBalance()
-    } catch (_) {
-      /* ignore balance fetch errors */
-    }
+    } catch (_) {}
   }
 
   return {
@@ -81,5 +169,7 @@ export const useTasksStore = defineStore('tasks', () => {
     addTask,
     removeTask,
     clearCompleted,
+    fetchTasks,
+    stopAllPolling,
   }
 })
