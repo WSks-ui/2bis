@@ -4,6 +4,7 @@ import api from '../api'
 
 export const usePointsStore = defineStore('points', () => {
   const balance = ref(0)
+  const freePoints = ref(0)
   const isMember = ref(false)
   const memberExpireAt = ref(null)
 
@@ -12,6 +13,7 @@ export const usePointsStore = defineStore('points', () => {
       const res = await api.get('/points/balance')
       const data = res.data
       balance.value = data.points ?? 0
+      freePoints.value = data.free_points ?? 0
       isMember.value = data.is_member || false
       memberExpireAt.value = data.member_expire_at || null
     } catch (e) {
@@ -21,6 +23,7 @@ export const usePointsStore = defineStore('points', () => {
 
   return {
     balance,
+    freePoints,
     isMember,
     memberExpireAt,
     fetchBalance

@@ -13,7 +13,15 @@
       </nav>
 
       <div class="navbar-actions">
+        <button class="btn-checkin" :class="{ 'btn-checkin-done': !checkinAvailable }" :disabled="!checkinAvailable" @click="doCheckin" :title="checkinTitle">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          <span class="checkin-text">{{ checkinLabel }}</span>
+        </button>
+
         <PointsDisplay :balance="pointsStore.balance" />
+        <PointsDisplay :balance="pointsStore.freePoints" :free="true" />
 
         <span v-if="userStore.isMember" class="member-badge">
           <span class="member-dot"></span>
@@ -31,16 +39,69 @@
         </button>
       </div>
     </div>
+
+    <div v-if="checkinResult" class="checkin-toast" :class="{ 'toast-out': toastHiding }">
+      <span class="toast-icon">🎁</span>
+      <span>签到成功! 第 {{ checkinResult.day_number }} 天 +{{ checkinResult.reward }} 免费积分</span>
+    </div>
   </header>
 </template>
 
 <script setup>
+import { ref, computed, onMounted } from 'vue'
 import { useUserStore } from '../stores/user'
 import { usePointsStore } from '../stores/points'
 import PointsDisplay from './PointsDisplay.vue'
+import api from '../api'
 
 const userStore = useUserStore()
 const pointsStore = usePointsStore()
+
+const checkinAvailable = ref(false)
+const checkinDay = ref(0)
+const checkinLoading = ref(false)
+const checkinResult = ref(null)
+const toastHiding = ref(false)
+let toastTimer = null
+
+const checkinLabel = computed(() => {
+  if (!checkinAvailable.value && checkinDay.value > 0) return '已签到'
+  return '签到'
+})
+
+const checkinTitle = computed(() => {
+  if (!checkinAvailable.value && checkinDay.value > 0) return `今日已签到 (连续第 ${checkinDay.value} 天)`
+  return '每日签到领积分'
+})
+
+onMounted(async () => {
+  try {
+    const res = await api.get('/auth/checkin/status')
+    checkinAvailable.value = res.data.checkin_available
+    checkinDay.value = res.data.consecutive_days
+  } catch (_) {}
+})
+
+async function doCheckin() {
+  if (!checkinAvailable.value || checkinLoading.value) return
+  checkinLoading.value = true
+  try {
+    const res = await api.post('/auth/checkin')
+    checkinAvailable.value = false
+    checkinDay.value = res.data.consecutive_days
+    pointsStore.freePoints = res.data.free_points
+    checkinResult.value = res.data
+    toastHiding.value = false
+    clearTimeout(toastTimer)
+    toastTimer = setTimeout(() => {
+      toastHiding.value = true
+      toastTimer = setTimeout(() => { checkinResult.value = null; toastHiding.value = false }, 400)
+    }, 2500)
+  } catch (_) {
+  } finally {
+    checkinLoading.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -129,7 +190,89 @@ const pointsStore = usePointsStore()
 .navbar-actions {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 10px;
+}
+
+.btn-checkin {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(217, 119, 87, 0.3);
+  background: rgba(217, 119, 87, 0.1);
+  color: var(--color-orange);
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.25s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-checkin:hover:not(:disabled) {
+  background: var(--color-orange);
+  color: var(--color-dark);
+  border-color: var(--color-orange);
+  box-shadow: 0 0 16px rgba(217, 119, 87, 0.3);
+}
+
+.btn-checkin:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.btn-checkin-done {
+  border-color: rgba(120, 140, 93, 0.2);
+  background: rgba(120, 140, 93, 0.06);
+  color: var(--color-green);
+  cursor: default;
+}
+
+.btn-checkin-done:hover {
+  background: rgba(120, 140, 93, 0.06);
+  color: var(--color-green);
+  box-shadow: none;
+}
+
+.checkin-text {
+  letter-spacing: 0.02em;
+}
+
+.checkin-toast {
+  position: fixed;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  padding: 12px 28px;
+  border-radius: 20px;
+  background: rgba(28, 28, 26, 0.95);
+  border: 1px solid rgba(120, 140, 93, 0.3);
+  color: var(--color-green);
+  font-family: var(--font-heading);
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(12px);
+  animation: toast-in 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+.checkin-toast.toast-out {
+  animation: toast-out 0.35s ease forwards;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(-12px) scale(0.95); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+}
+
+@keyframes toast-out {
+  from { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  to { opacity: 0; transform: translateX(-50%) translateY(-8px) scale(0.95); }
 }
 
 .username-text {

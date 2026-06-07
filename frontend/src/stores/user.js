@@ -51,6 +51,7 @@ export const useUserStore = defineStore('user', () => {
 
       const pointsStore = usePointsStore()
       pointsStore.balance = data.points ?? pointsStore.balance
+      pointsStore.freePoints = data.free_points ?? 0
       pointsStore.isMember = data.is_member || false
       pointsStore.memberExpireAt = data.member_expire_at || null
     } catch (e) {
