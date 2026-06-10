@@ -18,10 +18,14 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
-    path: '/recharge',
-    name: 'Recharge',
+    path: '/plans',
+    name: 'Plans',
     component: () => import('../views/Recharge.vue'),
     meta: { requiresAuth: true }
+  },
+  {
+    path: '/recharge',
+    redirect: '/plans'
   },
   {
     path: '/history',

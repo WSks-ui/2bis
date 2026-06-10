@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { computed, ref } from 'vue'
 import api from '../api'
 import { ElMessage } from 'element-plus'
 import router from '../router'
@@ -10,6 +10,9 @@ export const useUserStore = defineStore('user', () => {
   const token = ref(localStorage.getItem('token') || '')
   const isMember = ref(false)
   const memberExpireAt = ref(null)
+  const subscriptionPlan = ref(null)
+  const subscriptionPeriod = ref(null)
+  const subscriptionExpireAt = ref(null)
 
   const isLoggedIn = computed(() => !!token.value)
 
@@ -37,6 +40,9 @@ export const useUserStore = defineStore('user', () => {
     username.value = ''
     isMember.value = false
     memberExpireAt.value = null
+    subscriptionPlan.value = null
+    subscriptionPeriod.value = null
+    subscriptionExpireAt.value = null
     localStorage.removeItem('token')
     router.push('/login')
   }
@@ -48,12 +54,12 @@ export const useUserStore = defineStore('user', () => {
       username.value = data.username || username.value
       isMember.value = data.is_member || false
       memberExpireAt.value = data.member_expire_at || null
+      subscriptionPlan.value = data.subscription_plan || null
+      subscriptionPeriod.value = data.subscription_period || null
+      subscriptionExpireAt.value = data.subscription_expire_at || data.member_expire_at || null
 
       const pointsStore = usePointsStore()
-      pointsStore.balance = data.points ?? pointsStore.balance
-      pointsStore.freePoints = data.free_points ?? 0
-      pointsStore.isMember = data.is_member || false
-      pointsStore.memberExpireAt = data.member_expire_at || null
+      pointsStore.applyBalance(data)
     } catch (e) {
       console.error('Failed to fetch user info', e)
     }
@@ -64,6 +70,9 @@ export const useUserStore = defineStore('user', () => {
     token,
     isMember,
     memberExpireAt,
+    subscriptionPlan,
+    subscriptionPeriod,
+    subscriptionExpireAt,
     isLoggedIn,
     login,
     register,

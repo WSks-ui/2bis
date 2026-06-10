@@ -23,6 +23,7 @@ export const useTasksStore = defineStore('tasks', () => {
       imageUrl: data.image_url || '',
       error: data.error_message || '',
       pointsCost: data.points_cost || 0,
+      balanceSource: data.balance_source || '',
       createdAt: data.created_at || local.createdAt || new Date().toISOString(),
       startedAt: data.started_at || null,
       finishedAt: data.finished_at || null,
