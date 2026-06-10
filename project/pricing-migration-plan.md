@@ -72,6 +72,18 @@
 3. 高质量：只允许消耗体验包/订阅额度，不允许消耗体验积分。
 4. 所有退款必须按实际扣费来源原路退回。
 
+### 3.5 专业工作流第一版
+
+专业工作流第一版先作为更高价值的生成能力，不做独立现金价格和独立支付入口。
+
+规则：
+
+1. 在数据结构中预留 `workflow_type`、`workflow_cost`、`workflow_preset`。
+2. 第一版仍按额度扣费，统一经过 `QuotaManager`。
+3. 专业工作流不消耗体验积分，统一消耗体验包或订阅额度。
+4. 上线测试时观察每类工作流的真实成本、成功率、用户复用率，再调整 `workflow_cost`。
+5. 暂不新增 `professional_workflow` 订单类型，避免计费模型过早复杂化。
+
 ## 4. 关键业务规则
 
 在进入开发前，以下规则必须先定死，否则实现容易反复返工。
@@ -196,9 +208,10 @@
    - `trial_high_quality_used`
 2. 在 `Order` 上新增 `plan_period`。
 3. 在 `GenerationTask` 和 `GenerateHistory` 上新增 `balance_source`。
-4. 保留旧字段，不在第一版删除。
-5. 新增 Alembic migration。
-6. 同步更新 `backend/app/database.py` 中的启动补丁逻辑，避免 SQLite 本地开发失真。
+4. 在 `GenerationTask` 和 `GenerateHistory` 上新增 `workflow_type`、`workflow_cost`、`workflow_preset`。
+5. 保留旧字段，不在第一版删除。
+6. 新增 Alembic migration。
+7. 同步更新 `backend/app/database.py` 中的启动补丁逻辑，避免 SQLite 本地开发失真。
 
 验收标准：
 
@@ -221,6 +234,7 @@
 2. 保留 `PointManager` 仅做兼容期参考，不再作为主业务入口。
 3. 所有扣费决策基于 `quality` 判断，而不是基于 cost 数值判断。
 4. 所有退款都依赖 `balance_source`。
+5. 专业工作流通过 `workflow_type` 进入同一扣费入口，不新增单独支付链路。
 
 验收标准：
 
@@ -258,9 +272,10 @@
 
 1. 改 `generate.py` 与 `edits.py`，统一调用 `QuotaManager.deduct_for_generation(...)`。
 2. 将本次扣费来源写入 `GenerationTask.balance_source`。
-3. 入队失败时不再直接加普通积分，而是调用统一退款逻辑。
-4. worker 最终失败时根据 `balance_source` 原路退款。
-5. 历史记录保存 `points_cost` 与 `balance_source`。
+3. 将本次工作流信息写入 `GenerationTask.workflow_type`、`workflow_cost`、`workflow_preset`。
+4. 入队失败时不再直接加普通积分，而是调用统一退款逻辑。
+5. worker 最终失败时根据 `balance_source` 原路退款。
+6. 历史记录保存 `points_cost`、`balance_source` 和工作流字段。
 
 验收标准：
 
@@ -381,6 +396,7 @@
 5. 扣费失败时余额不变。
 6. 原路退款正确恢复。
 7. 并发扣费不出现负数。
+8. 专业工作流不消耗体验积分，按额度扣费并记录 `workflow_type` 与 `workflow_cost`。
 
 ### 8.2 后端接口测试
 

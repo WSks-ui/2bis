@@ -23,6 +23,7 @@
       <span>{{ modeLabel }}</span>
       <span>{{ qualityLabel }}</span>
       <span>{{ task.size?.replace('x', '×') }}</span>
+      <span v-if="task.workflowType && task.workflowType !== 'standard'">{{ workflowLabel }}</span>
       <span v-if="task.pointsCost">{{ task.pointsCost }} 额度</span>
       <span v-if="task.balanceSource">{{ sourceLabel }}</span>
       <button v-if="task.status === 'failed'" class="task-remove-btn" @click.stop="$emit('remove', task.id)">移除</button>
@@ -62,6 +63,11 @@ const statusLabel = computed(() => {
 const sourceLabel = computed(() => {
   const map = { free_points: '体验积分', quota: '订阅额度', points: '普通积分' }
   return map[props.task.balanceSource] || '未知来源'
+})
+
+const workflowLabel = computed(() => {
+  const map = { professional: '专业工作流' }
+  return map[props.task.workflowType] || props.task.workflowType
 })
 
 function downloadImage() {

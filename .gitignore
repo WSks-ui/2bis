@@ -6,6 +6,7 @@ __pycache__/
 .venv/
 venv/
 env/
+.test-deps/
 .env
 *.db
 *.sqlite
@@ -13,13 +14,16 @@ env/
 # Node
 node_modules/
 dist/
+*.log
 .DS_Store
 
 # IDE
 .idea/
+.workbuddy/
 
 # OS
 Thumbs.db
 
-# 后端生成的 AI 图片 (落盘,不入库)
+# 后端生成的 AI 图片和上传文件 (落盘,不入库)
 backend/static/images/
+backend/static/uploads/

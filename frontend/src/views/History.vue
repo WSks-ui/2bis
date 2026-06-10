@@ -28,6 +28,9 @@
             <div class="meta-row">
               <span>{{ record.points_cost }} 额度</span>
               <span>{{ sourceLabel(record.balance_source) }}</span>
+              <span v-if="record.workflow_type && record.workflow_type !== 'standard'">
+                {{ workflowLabel(record.workflow_type) }}
+              </span>
               <span>{{ formatTime(record.created_at) }}</span>
             </div>
             <div class="card-actions">
@@ -49,6 +52,9 @@
             <span>{{ qualityLabel(previewRecord.quality) }}</span>
             <span>{{ previewRecord.points_cost }} 额度</span>
             <span>{{ sourceLabel(previewRecord.balance_source) }}</span>
+            <span v-if="previewRecord.workflow_type && previewRecord.workflow_type !== 'standard'">
+              {{ workflowLabel(previewRecord.workflow_type) }}
+            </span>
             <span>{{ formatTime(previewRecord.created_at) }}</span>
           </div>
         </div>
@@ -147,6 +153,11 @@ function qualityLabel(quality) {
 function sourceLabel(source) {
   const map = { free_points: '体验积分', quota: '订阅额度', points: '普通积分' }
   return map[source] || '未知来源'
+}
+
+function workflowLabel(type) {
+  const map = { professional: '专业工作流' }
+  return map[type] || type
 }
 
 function formatTime(timeStr) {

@@ -24,6 +24,9 @@ export const useTasksStore = defineStore('tasks', () => {
       error: data.error_message || '',
       pointsCost: data.points_cost || 0,
       balanceSource: data.balance_source || '',
+      workflowType: data.workflow_type || 'standard',
+      workflowCost: data.workflow_cost || data.points_cost || 0,
+      workflowPreset: data.workflow_preset || '',
       createdAt: data.created_at || local.createdAt || new Date().toISOString(),
       startedAt: data.started_at || null,
       finishedAt: data.finished_at || null,
@@ -62,6 +65,9 @@ export const useTasksStore = defineStore('tasks', () => {
       rawStatus: 'pending',
       imageUrl: '',
       error: '',
+      workflowType: 'standard',
+      workflowCost: 0,
+      workflowPreset: '',
       createdAt: new Date().toISOString(),
     }
     tasks.value.push(local)

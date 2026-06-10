@@ -63,6 +63,8 @@ Deduction priority:
 - `low` and `medium` first try experience points.
 - If experience points cannot fully pay the request, subscription quota is used instead.
 - `high` always requires subscription quota.
+- Professional workflow metadata is reserved with `workflow_type`, `workflow_cost`, and `workflow_preset`.
+- The first professional workflow version uses the same quota deduction path and does not create a separate payment product.
 - Failed async tasks refund to the original `balance_source`.
 
 ## Backend
@@ -116,6 +118,10 @@ Important backend environment variables:
 | `AI_API_KEY` | empty | Image API key |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis queue URL |
 | `FREE_POINTS_TTL_DAYS` | `10` | Experience point validity |
+| `DEFAULT_WORKFLOW_TYPE` | `standard` | Default generation workflow type |
+| `PROFESSIONAL_WORKFLOW_LOW_COST` | `1` | Professional low quality quota cost |
+| `PROFESSIONAL_WORKFLOW_MEDIUM_COST` | `2` | Professional medium quality quota cost |
+| `PROFESSIONAL_WORKFLOW_HIGH_COST` | `3` | Professional high quality quota cost |
 | `GENERATION_MAX_RETRIES` | `2` | Worker retry count |
 | `GENERATION_WORKER_CONCURRENCY` | `100` | Worker concurrency |
 
@@ -153,7 +159,13 @@ Important billing fields:
 - `users.trial_activated`
 - `users.trial_expire_at`
 - `generation_tasks.balance_source`
+- `generation_tasks.workflow_type`
+- `generation_tasks.workflow_cost`
+- `generation_tasks.workflow_preset`
 - `generate_histories.balance_source`
+- `generate_histories.workflow_type`
+- `generate_histories.workflow_cost`
+- `generate_histories.workflow_preset`
 - `orders.plan_period`
 
 Legacy fields such as `users.points`, `users.is_member`, and `users.member_expire_at` are retained for compatibility, but the generation billing path now uses `QuotaManager`.
