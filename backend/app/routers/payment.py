@@ -9,7 +9,7 @@ from app.dependencies import get_current_user
 from app.models import Order, OrderStatus, User
 from app.schemas import OrderCreate, OrderResponse
 from app.services.payment_simulator import PaymentSimulator
-from app.services.point_manager import PointManager
+from app.services.quota_manager import QuotaError, QuotaManager
 
 router = APIRouter(prefix="/payment", tags=["payment"])
 
@@ -20,43 +20,54 @@ async def create_order(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if data.order_type == "points_pack":
-        pack = next(
-            (p for p in PaymentSimulator.POINTS_PACKS if p["id"] == data.product_id),
-            None,
-        )
-        if pack is None:
+    order_type = data.order_type.lower()
+    plan_period = data.plan_period.lower() if data.plan_period else None
+
+    if order_type == "trial":
+        if current_user.trial_activated:
+            raise HTTPException(status_code=400, detail="Trial pack has already been used")
+        if QuotaManager.subscription_active(current_user):
+            raise HTTPException(
+                status_code=400,
+                detail="Trial pack is not available for active subscriptions",
+            )
+        trial_pack = QuotaManager.get_trial_pack()
+        if data.product_id != trial_pack["id"]:
             raise HTTPException(status_code=400, detail="Invalid product_id")
-        amount = pack["price"]
-    elif data.order_type == "membership":
-        plan = next(
-            (p for p in PaymentSimulator.MEMBERSHIP_PLANS if p["id"] == data.product_id),
-            None,
-        )
+        amount = float(trial_pack["price"])
+        plan_period = None
+    elif order_type == "subscription":
+        plan = QuotaManager.get_plan_by_id(data.product_id)
         if plan is None:
             raise HTTPException(status_code=400, detail="Invalid product_id")
-        amount = plan["price"]
+        try:
+            amount = QuotaManager.get_subscription_price(plan, plan_period or "")
+        except QuotaError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     else:
-        raise HTTPException(
-            status_code=400, detail="order_type must be points_pack or membership"
-        )
+        raise HTTPException(status_code=400, detail="order_type must be trial or subscription")
 
     order = await PaymentSimulator.create_order(
-        db, current_user.id, data.order_type, data.product_id, amount
+        db,
+        current_user.id,
+        order_type,
+        data.product_id,
+        amount,
+        plan_period=plan_period,
     )
     await db.commit()
     await db.refresh(order)
 
-    qr_code_text = f"模拟支付订单: {order.order_no}，请点击模拟支付按钮完成支付"
     return OrderResponse(
         id=order.id,
         order_no=order.order_no,
         order_type=order.order_type,
         product_id=order.product_id,
+        plan_period=order.plan_period,
         amount=order.amount,
         status=order.status.value,
         created_at=order.created_at,
-        qr_code_text=qr_code_text,
+        qr_code_text=f"Mock payment order: {order.order_no}",
     )
 
 
@@ -80,32 +91,43 @@ async def mock_pay_callback(
         order.status = OrderStatus.PAID
         order.paid_at = datetime.utcnow()
 
-        if order.order_type == "points_pack":
-            pack = next(
-                (p for p in PaymentSimulator.POINTS_PACKS if p["id"] == order.product_id),
-                None,
-            )
-            if pack:
-                await PointManager.add_points(db, current_user.id, pack["points"])
-        elif order.order_type == "membership":
-            plan = next(
-                (p for p in PaymentSimulator.MEMBERSHIP_PLANS if p["id"] == order.product_id),
-                None,
-            )
-            if plan:
-                await PointManager.activate_membership(
-                    db, current_user.id, plan["duration_days"], plan["points_bonus"]
+        if order.order_type == "trial":
+            try:
+                await QuotaManager.activate_trial(db, current_user.id)
+            except QuotaError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+        elif order.order_type == "subscription":
+            plan = QuotaManager.get_plan_by_id(order.product_id)
+            if plan is None:
+                raise HTTPException(status_code=400, detail="Invalid subscription plan")
+            try:
+                await QuotaManager.activate_subscription(
+                    db,
+                    current_user.id,
+                    plan["plan_key"],
+                    order.plan_period or "",
                 )
+            except QuotaError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported order type")
 
     await db.commit()
     await db.refresh(current_user)
     await db.refresh(order)
+    QuotaManager.refresh_user_state(current_user)
 
     return {
-        "message": "支付成功" if not already_paid else "订单已支付",
+        "message": "Payment successful" if not already_paid else "Order already paid",
         "order_no": order.order_no,
         "status": order.status.value,
-        "points": current_user.points,
-        "is_member": current_user.is_member,
-        "member_expire_at": current_user.member_expire_at,
+        "free_points": current_user.free_points,
+        "monthly_quota_remaining": current_user.monthly_quota_remaining,
+        "monthly_quota_total": current_user.monthly_quota_total,
+        "monthly_quota_reset_at": current_user.monthly_quota_reset_at,
+        "subscription_plan": current_user.subscription_plan,
+        "subscription_period": current_user.subscription_period,
+        "subscription_expire_at": current_user.member_expire_at,
+        "trial_activated": current_user.trial_activated,
+        "trial_expire_at": current_user.trial_expire_at,
     }

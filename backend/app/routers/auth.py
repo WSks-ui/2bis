@@ -33,6 +33,9 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
         hashed_password=hashed_password.decode("utf-8"),
         points=0,
         is_member=False,
+        monthly_quota_total=0,
+        monthly_quota_remaining=0,
+        trial_activated=False,
         created_at=datetime.utcnow(),
     )
     db.add(user)
@@ -46,6 +49,14 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
         free_points_expire_at=user.free_points_expire_at,
         is_member=user.is_member,
         member_expire_at=user.member_expire_at,
+        subscription_plan=user.subscription_plan,
+        subscription_period=user.subscription_period,
+        subscription_expire_at=user.member_expire_at,
+        monthly_quota_total=user.monthly_quota_total,
+        monthly_quota_remaining=user.monthly_quota_remaining,
+        monthly_quota_reset_at=user.monthly_quota_reset_at,
+        trial_activated=user.trial_activated,
+        trial_expire_at=user.trial_expire_at,
         created_at=user.created_at,
     )
 

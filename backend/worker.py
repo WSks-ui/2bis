@@ -14,7 +14,7 @@ from app.database import async_session
 from app.models import GenerateHistory, GenerationTask, GenerationTaskStatus
 from app.services.ai_client import AIClient, close_client
 from app.services.image_storage import save_data_url
-from app.services.point_manager import PointManager
+from app.services.quota_manager import QuotaManager
 from app.services.task_queue import close_redis, dequeue_generation_task, enqueue_generation_task
 from app.services.upload_storage import read_upload_file
 
@@ -95,6 +95,7 @@ async def process_task(task_id: int) -> None:
                 image_url=image_url,
                 quality=task.quality,
                 points_cost=task.points_cost,
+                balance_source=task.balance_source,
                 created_at=task.finished_at,
             )
             db.add(history)
@@ -118,7 +119,9 @@ async def process_task(task_id: int) -> None:
                 logger.exception("task %s failed, retry %s/%s", task_id, task.retry_count, task.max_retries)
                 return
 
-            await PointManager.add_points(db, task.user_id, task.points_cost)
+            await QuotaManager.refund_generation(
+                db, task.user_id, task.points_cost, task.balance_source
+            )
             task.status = GenerationTaskStatus.REFUNDED
             task.finished_at = datetime.utcnow()
             await db.commit()

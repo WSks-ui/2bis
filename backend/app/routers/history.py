@@ -32,6 +32,7 @@ async def list_history(
             image_url=h.image_url,
             quality=h.quality,
             points_cost=h.points_cost,
+            balance_source=h.balance_source,
             created_at=h.created_at,
         )
         for h in histories

@@ -9,7 +9,7 @@ from app.dependencies import get_current_user
 from app.config import GENERATION_MAX_RETRIES
 from app.models import GenerationTask, GenerationTaskStatus, User
 from app.schemas import GenerateRequest, GenerationTaskResponse
-from app.services.point_manager import PointManager
+from app.services.quota_manager import QuotaError, QuotaManager
 from app.services.task_queue import enqueue_generation_task
 
 router = APIRouter(prefix="/generate", tags=["generate"])
@@ -24,6 +24,7 @@ def task_response(task: GenerationTask) -> GenerationTaskResponse:
         size=task.size,
         status=task.status.value,
         points_cost=task.points_cost,
+        balance_source=task.balance_source,
         image_url=task.image_url,
         error_message=task.error_message,
         created_at=task.created_at,
@@ -41,10 +42,10 @@ async def generate(
     if not data.prompt.strip():
         raise HTTPException(status_code=400, detail="Prompt cannot be empty")
 
-    cost = PointManager.get_cost(current_user.is_member, data.quality)
-    deducted = await PointManager.deduct_points(db, current_user.id, cost)
-    if not deducted:
-        raise HTTPException(status_code=400, detail="Insufficient points")
+    try:
+        deduction = await QuotaManager.deduct_for_generation(db, current_user.id, data.quality)
+    except QuotaError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     task = GenerationTask(
         user_id=current_user.id,
@@ -52,7 +53,8 @@ async def generate(
         prompt=data.prompt.strip(),
         quality=data.quality,
         size=data.size,
-        points_cost=cost,
+        points_cost=deduction.cost,
+        balance_source=deduction.balance_source,
         max_retries=GENERATION_MAX_RETRIES,
     )
     db.add(task)
@@ -62,7 +64,9 @@ async def generate(
     try:
         await enqueue_generation_task(task.id)
     except Exception as e:
-        await PointManager.add_points(db, current_user.id, cost)
+        await QuotaManager.refund_generation(
+            db, current_user.id, task.points_cost, task.balance_source
+        )
         task.status = GenerationTaskStatus.REFUNDED
         task.error_message = f"Task queue unavailable: {e}"
         await db.commit()

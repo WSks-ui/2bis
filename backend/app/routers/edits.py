@@ -6,7 +6,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import GenerationTask, GenerationTaskStatus, User
 from app.schemas import GenerationTaskResponse
-from app.services.point_manager import PointManager
+from app.services.quota_manager import QuotaError, QuotaManager
 from app.services.task_queue import enqueue_generation_task
 from app.services.upload_storage import save_upload_file
 
@@ -22,6 +22,7 @@ def task_response(task: GenerationTask) -> GenerationTaskResponse:
         size=task.size,
         status=task.status.value,
         points_cost=task.points_cost,
+        balance_source=task.balance_source,
         image_url=task.image_url,
         error_message=task.error_message,
         created_at=task.created_at,
@@ -51,10 +52,10 @@ async def edit_image(
             detail=f"Image too large (max {MAX_UPLOAD_SIZE // 1024 // 1024}MB)",
         )
 
-    cost = PointManager.get_cost(current_user.is_member, quality)
-    deducted = await PointManager.deduct_points(db, current_user.id, cost)
-    if not deducted:
-        raise HTTPException(status_code=400, detail="Insufficient points")
+    try:
+        deduction = await QuotaManager.deduct_for_generation(db, current_user.id, quality)
+    except QuotaError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     source_image_path = await save_upload_file(image_bytes, current_user.id, image.filename)
     task = GenerationTask(
@@ -63,7 +64,8 @@ async def edit_image(
         prompt=prompt.strip(),
         quality=quality,
         size=size,
-        points_cost=cost,
+        points_cost=deduction.cost,
+        balance_source=deduction.balance_source,
         source_image_path=source_image_path,
         max_retries=GENERATION_MAX_RETRIES,
     )
@@ -74,7 +76,9 @@ async def edit_image(
     try:
         await enqueue_generation_task(task.id)
     except Exception as e:
-        await PointManager.add_points(db, current_user.id, cost)
+        await QuotaManager.refund_generation(
+            db, current_user.id, task.points_cost, task.balance_source
+        )
         task.status = GenerationTaskStatus.REFUNDED
         task.error_message = f"Task queue unavailable: {e}"
         await db.commit()

@@ -41,3 +41,47 @@ S3_PUBLIC_BASE_URL: str = os.getenv("S3_PUBLIC_BASE_URL", "")
 CHECKIN_REWARDS: dict = {1: 1, 2: 1, 3: 1, 4: 2, 5: 1, 6: 1, 7: 3}
 # 免费积分有效期 (天)
 FREE_POINTS_TTL_DAYS: int = int(os.getenv("FREE_POINTS_TTL_DAYS", "10"))
+
+TRIAL_PACK: dict = {
+    "id": 1,
+    "name": "Trial Pack",
+    "price": 5.0,
+    "quota": 30,
+    "duration_days": 7,
+    "trial_high_quality_limit": 0,
+}
+
+SUBSCRIPTION_PLANS: list[dict] = [
+    {
+        "id": 1,
+        "name": "Light",
+        "plan_key": "light",
+        "monthly_price": 29.0,
+        "yearly_price": 268.0,
+        "monthly_quota": 100,
+    },
+    {
+        "id": 2,
+        "name": "Creator",
+        "plan_key": "creator",
+        "monthly_price": 69.0,
+        "yearly_price": 628.0,
+        "monthly_quota": 350,
+    },
+    {
+        "id": 3,
+        "name": "Pro",
+        "plan_key": "pro",
+        "monthly_price": 149.0,
+        "yearly_price": 1368.0,
+        "monthly_quota": 800,
+    },
+]
+
+QUOTA_COST: dict[str, int] = {
+    "low": 1,
+    "medium": 2,
+    "high": 3,
+}
+
+EXPERIENCE_POINTS_QUALITIES: set[str] = {"low", "medium"}

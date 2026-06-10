@@ -26,6 +26,14 @@ class UserInfo(BaseModel):
     free_points_expire_at: Optional[datetime] = None
     is_member: bool
     member_expire_at: Optional[datetime] = None
+    subscription_plan: Optional[str] = None
+    subscription_period: Optional[str] = None
+    subscription_expire_at: Optional[datetime] = None
+    monthly_quota_total: int = 0
+    monthly_quota_remaining: int = 0
+    monthly_quota_reset_at: Optional[datetime] = None
+    trial_activated: bool = False
+    trial_expire_at: Optional[datetime] = None
     created_at: datetime
 
 
@@ -41,6 +49,7 @@ class GenerateResponse(BaseModel):
     image_url: str
     quality: str
     points_cost: int
+    balance_source: Optional[str] = None
     created_at: datetime
 
 
@@ -52,6 +61,7 @@ class GenerationTaskResponse(BaseModel):
     size: str
     status: str
     points_cost: int
+    balance_source: Optional[str] = None
     image_url: Optional[str] = None
     error_message: Optional[str] = None
     created_at: datetime
@@ -66,12 +76,14 @@ class HistoryItem(BaseModel):
     image_url: Optional[str] = None
     quality: str
     points_cost: int
+    balance_source: Optional[str] = None
     created_at: datetime
 
 
 class OrderCreate(BaseModel):
     order_type: str
     product_id: int
+    plan_period: Optional[str] = None
 
 
 class OrderResponse(BaseModel):
@@ -79,6 +91,7 @@ class OrderResponse(BaseModel):
     order_no: str
     order_type: str
     product_id: int
+    plan_period: Optional[str] = None
     amount: float
     status: str
     created_at: datetime
@@ -100,6 +113,29 @@ class MembershipPlan(BaseModel):
     duration_days: int
 
 
+class SubscriptionPlan(BaseModel):
+    id: int
+    name: str
+    plan_key: str
+    monthly_price: float
+    yearly_price: float
+    monthly_quota: int
+
+
+class TrialPack(BaseModel):
+    id: int
+    name: str
+    price: float
+    quota: int
+    duration_days: int
+    trial_high_quality_limit: int = 0
+
+
+class PlansResponse(BaseModel):
+    trial_pack: TrialPack
+    subscription_plans: list[SubscriptionPlan]
+
+
 class LoginCheckinResponse(BaseModel):
     checkin_available: bool
     consecutive_days: int = 0
@@ -117,3 +153,11 @@ class PointsBalanceResponse(BaseModel):
     free_points_expire_at: Optional[datetime] = None
     is_member: bool
     member_expire_at: Optional[datetime] = None
+    subscription_plan: Optional[str] = None
+    subscription_period: Optional[str] = None
+    subscription_expire_at: Optional[datetime] = None
+    monthly_quota_remaining: int = 0
+    monthly_quota_total: int = 0
+    monthly_quota_reset_at: Optional[datetime] = None
+    trial_activated: bool = False
+    trial_expire_at: Optional[datetime] = None

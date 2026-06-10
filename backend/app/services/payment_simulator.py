@@ -1,5 +1,6 @@
 import random
 import time
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,18 +9,6 @@ from app.models import Order, OrderStatus
 
 
 class PaymentSimulator:
-    POINTS_PACKS = [
-        {"id": 1, "name": "50积分", "price": 10.0, "points": 50},
-        {"id": 2, "name": "140积分", "price": 25.0, "points": 140},
-        {"id": 3, "name": "300积分", "price": 50.0, "points": 300},
-    ]
-
-    MEMBERSHIP_PLANS = [
-        {"id": 1, "name": "月度会员", "price": 39.0, "points_bonus": 260, "duration_days": 30},
-        {"id": 2, "name": "季度会员", "price": 109.0, "points_bonus": 720, "duration_days": 90},
-        {"id": 3, "name": "年度会员", "price": 399.0, "points_bonus": 2700, "duration_days": 365},
-    ]
-
     @staticmethod
     def generate_order_no() -> str:
         timestamp = str(int(time.time() * 1000))
@@ -28,14 +17,19 @@ class PaymentSimulator:
 
     @staticmethod
     async def create_order(
-        db: AsyncSession, user_id: int, order_type: str, product_id: int, amount: float
+        db: AsyncSession,
+        user_id: int,
+        order_type: str,
+        product_id: int,
+        amount: float,
+        plan_period: str | None = None,
     ) -> Order:
-        order_no = PaymentSimulator.generate_order_no()
         order = Order(
             user_id=user_id,
-            order_no=order_no,
+            order_no=PaymentSimulator.generate_order_no(),
             order_type=order_type,
             product_id=product_id,
+            plan_period=plan_period,
             amount=amount,
             status=OrderStatus.PENDING,
         )
@@ -55,8 +49,6 @@ class PaymentSimulator:
             raise ValueError(f"Order is not pending, current status: {order.status}")
 
         order.status = OrderStatus.PAID
-        from datetime import datetime
-
         order.paid_at = datetime.utcnow()
         await db.flush()
         return order
