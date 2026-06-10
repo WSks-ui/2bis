@@ -23,6 +23,9 @@ def task_response(task: GenerationTask) -> GenerationTaskResponse:
         status=task.status.value,
         points_cost=task.points_cost,
         balance_source=task.balance_source,
+        workflow_type=task.workflow_type,
+        workflow_cost=task.workflow_cost,
+        workflow_preset=task.workflow_preset,
         image_url=task.image_url,
         error_message=task.error_message,
         created_at=task.created_at,
@@ -37,6 +40,8 @@ async def edit_image(
     prompt: str = Form(..., min_length=1, max_length=2000),
     quality: str = Form(default="low"),
     size: str = Form(default="1024x1024"),
+    workflow_type: str = Form(default="standard", max_length=40),
+    workflow_preset: str | None = Form(default=None, max_length=80),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -53,10 +58,16 @@ async def edit_image(
         )
 
     try:
-        deduction = await QuotaManager.deduct_for_generation(db, current_user.id, quality)
+        deduction = await QuotaManager.deduct_for_generation(
+            db,
+            current_user.id,
+            quality,
+            workflow_type,
+        )
     except QuotaError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    normalized_workflow_preset = QuotaManager.normalize_workflow_preset(workflow_preset)
     source_image_path = await save_upload_file(image_bytes, current_user.id, image.filename)
     task = GenerationTask(
         user_id=current_user.id,
@@ -66,6 +77,9 @@ async def edit_image(
         size=size,
         points_cost=deduction.cost,
         balance_source=deduction.balance_source,
+        workflow_type=deduction.workflow_type,
+        workflow_cost=deduction.workflow_cost,
+        workflow_preset=normalized_workflow_preset,
         source_image_path=source_image_path,
         max_retries=GENERATION_MAX_RETRIES,
     )

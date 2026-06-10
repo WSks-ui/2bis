@@ -46,11 +46,27 @@ if _is_sqlite:
                 )
             if "balance_source" not in columns:
                 cursor.execute("ALTER TABLE generate_histories ADD COLUMN balance_source VARCHAR(20)")
+            if "workflow_type" not in columns:
+                cursor.execute(
+                    "ALTER TABLE generate_histories ADD COLUMN workflow_type VARCHAR(40) DEFAULT 'standard' NOT NULL"
+                )
+            if "workflow_cost" not in columns:
+                cursor.execute("ALTER TABLE generate_histories ADD COLUMN workflow_cost INTEGER DEFAULT 0 NOT NULL")
+            if "workflow_preset" not in columns:
+                cursor.execute("ALTER TABLE generate_histories ADD COLUMN workflow_preset VARCHAR(80)")
 
         if "generation_tasks" in tables:
             columns = _sqlite_columns(cursor, "generation_tasks")
             if "balance_source" not in columns:
                 cursor.execute("ALTER TABLE generation_tasks ADD COLUMN balance_source VARCHAR(20)")
+            if "workflow_type" not in columns:
+                cursor.execute(
+                    "ALTER TABLE generation_tasks ADD COLUMN workflow_type VARCHAR(40) DEFAULT 'standard' NOT NULL"
+                )
+            if "workflow_cost" not in columns:
+                cursor.execute("ALTER TABLE generation_tasks ADD COLUMN workflow_cost INTEGER DEFAULT 0 NOT NULL")
+            if "workflow_preset" not in columns:
+                cursor.execute("ALTER TABLE generation_tasks ADD COLUMN workflow_preset VARCHAR(80)")
 
         if "orders" in tables:
             columns = _sqlite_columns(cursor, "orders")

@@ -25,6 +25,9 @@ def task_response(task: GenerationTask) -> GenerationTaskResponse:
         status=task.status.value,
         points_cost=task.points_cost,
         balance_source=task.balance_source,
+        workflow_type=task.workflow_type,
+        workflow_cost=task.workflow_cost,
+        workflow_preset=task.workflow_preset,
         image_url=task.image_url,
         error_message=task.error_message,
         created_at=task.created_at,
@@ -43,10 +46,16 @@ async def generate(
         raise HTTPException(status_code=400, detail="Prompt cannot be empty")
 
     try:
-        deduction = await QuotaManager.deduct_for_generation(db, current_user.id, data.quality)
+        deduction = await QuotaManager.deduct_for_generation(
+            db,
+            current_user.id,
+            data.quality,
+            data.workflow_type,
+        )
     except QuotaError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    workflow_preset = QuotaManager.normalize_workflow_preset(data.workflow_preset)
     task = GenerationTask(
         user_id=current_user.id,
         mode="text2img",
@@ -55,6 +64,9 @@ async def generate(
         size=data.size,
         points_cost=deduction.cost,
         balance_source=deduction.balance_source,
+        workflow_type=deduction.workflow_type,
+        workflow_cost=deduction.workflow_cost,
+        workflow_preset=workflow_preset,
         max_retries=GENERATION_MAX_RETRIES,
     )
     db.add(task)

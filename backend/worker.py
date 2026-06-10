@@ -96,6 +96,9 @@ async def process_task(task_id: int) -> None:
                 quality=task.quality,
                 points_cost=task.points_cost,
                 balance_source=task.balance_source,
+                workflow_type=task.workflow_type,
+                workflow_cost=task.workflow_cost,
+                workflow_preset=task.workflow_preset,
                 created_at=task.finished_at,
             )
             db.add(history)

@@ -85,3 +85,13 @@ QUOTA_COST: dict[str, int] = {
 }
 
 EXPERIENCE_POINTS_QUALITIES: set[str] = {"low", "medium"}
+STANDARD_WORKFLOW_TYPE: str = "standard"
+DEFAULT_WORKFLOW_TYPE: str = os.getenv("DEFAULT_WORKFLOW_TYPE", STANDARD_WORKFLOW_TYPE).strip().lower() or STANDARD_WORKFLOW_TYPE
+WORKFLOW_QUOTA_COST: dict[str, dict[str, int]] = {
+    STANDARD_WORKFLOW_TYPE: QUOTA_COST,
+    "professional": {
+        "low": int(os.getenv("PROFESSIONAL_WORKFLOW_LOW_COST", str(QUOTA_COST["low"]))),
+        "medium": int(os.getenv("PROFESSIONAL_WORKFLOW_MEDIUM_COST", str(QUOTA_COST["medium"]))),
+        "high": int(os.getenv("PROFESSIONAL_WORKFLOW_HIGH_COST", str(QUOTA_COST["high"]))),
+    },
+}

@@ -7,11 +7,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import (
+    DEFAULT_WORKFLOW_TYPE,
     EXPERIENCE_POINTS_QUALITIES,
     FREE_POINTS_TTL_DAYS,
     QUOTA_COST,
+    STANDARD_WORKFLOW_TYPE,
     SUBSCRIPTION_PLANS,
     TRIAL_PACK,
+    WORKFLOW_QUOTA_COST,
 )
 from app.models import User
 
@@ -29,6 +32,8 @@ class QuotaError(ValueError):
 class DeductionResult:
     cost: int
     balance_source: str
+    workflow_type: str
+    workflow_cost: int
 
 
 class QuotaManager:
@@ -51,11 +56,27 @@ class QuotaManager:
         return next((plan for plan in SUBSCRIPTION_PLANS if plan["plan_key"] == plan_key), None)
 
     @staticmethod
-    def get_cost(quality: str) -> int:
+    def normalize_workflow_type(workflow_type: str | None) -> str:
+        normalized = (workflow_type or DEFAULT_WORKFLOW_TYPE).strip().lower()
+        if not normalized:
+            normalized = DEFAULT_WORKFLOW_TYPE
+        if normalized not in WORKFLOW_QUOTA_COST:
+            raise QuotaError(f"Invalid workflow type: {workflow_type}")
+        return normalized
+
+    @staticmethod
+    def normalize_workflow_preset(workflow_preset: str | None) -> str | None:
+        normalized = (workflow_preset or "").strip()
+        return normalized or None
+
+    @staticmethod
+    def get_cost(quality: str, workflow_type: str | None = None) -> int:
         normalized = quality.lower()
-        if normalized not in QUOTA_COST:
+        normalized_workflow = QuotaManager.normalize_workflow_type(workflow_type)
+        cost_table = WORKFLOW_QUOTA_COST[normalized_workflow]
+        if normalized not in QUOTA_COST or normalized not in cost_table:
             raise QuotaError(f"Invalid quality: {quality}")
-        return QUOTA_COST[normalized]
+        return int(cost_table[normalized])
 
     @staticmethod
     def get_subscription_price(plan: dict, period: str) -> float:
@@ -149,25 +170,42 @@ class QuotaManager:
         return user
 
     @staticmethod
-    async def deduct_for_generation(db: AsyncSession, user_id: int, quality: str) -> DeductionResult:
+    async def deduct_for_generation(
+        db: AsyncSession,
+        user_id: int,
+        quality: str,
+        workflow_type: str | None = None,
+    ) -> DeductionResult:
         normalized_quality = quality.lower()
-        cost = QuotaManager.get_cost(normalized_quality)
+        normalized_workflow = QuotaManager.normalize_workflow_type(workflow_type)
+        cost = QuotaManager.get_cost(normalized_quality, normalized_workflow)
         user = await QuotaManager.refresh_user_state_for_update(db, user_id)
         if user is None:
             raise QuotaError("User not found")
 
         if (
-            normalized_quality in EXPERIENCE_POINTS_QUALITIES
+            normalized_workflow == STANDARD_WORKFLOW_TYPE
+            and normalized_quality in EXPERIENCE_POINTS_QUALITIES
             and (user.free_points or 0) >= cost
         ):
             user.free_points -= cost
             await db.flush()
-            return DeductionResult(cost=cost, balance_source=BALANCE_SOURCE_FREE_POINTS)
+            return DeductionResult(
+                cost=cost,
+                balance_source=BALANCE_SOURCE_FREE_POINTS,
+                workflow_type=normalized_workflow,
+                workflow_cost=cost,
+            )
 
         if QuotaManager._has_usable_quota(user, datetime.utcnow()) and (user.monthly_quota_remaining or 0) >= cost:
             user.monthly_quota_remaining -= cost
             await db.flush()
-            return DeductionResult(cost=cost, balance_source=BALANCE_SOURCE_QUOTA)
+            return DeductionResult(
+                cost=cost,
+                balance_source=BALANCE_SOURCE_QUOTA,
+                workflow_type=normalized_workflow,
+                workflow_cost=cost,
+            )
 
         if normalized_quality == "high":
             raise QuotaError("High quality generation requires subscription quota")

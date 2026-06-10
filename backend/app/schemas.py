@@ -41,6 +41,8 @@ class GenerateRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=2000)
     quality: str = Field(default="low")
     size: str = Field(default="1024x1024")
+    workflow_type: str = Field(default="standard", max_length=40)
+    workflow_preset: Optional[str] = Field(default=None, max_length=80)
 
 
 class GenerateResponse(BaseModel):
@@ -50,6 +52,9 @@ class GenerateResponse(BaseModel):
     quality: str
     points_cost: int
     balance_source: Optional[str] = None
+    workflow_type: str = "standard"
+    workflow_cost: int = 0
+    workflow_preset: Optional[str] = None
     created_at: datetime
 
 
@@ -62,6 +67,9 @@ class GenerationTaskResponse(BaseModel):
     status: str
     points_cost: int
     balance_source: Optional[str] = None
+    workflow_type: str = "standard"
+    workflow_cost: int = 0
+    workflow_preset: Optional[str] = None
     image_url: Optional[str] = None
     error_message: Optional[str] = None
     created_at: datetime
@@ -77,6 +85,9 @@ class HistoryItem(BaseModel):
     quality: str
     points_cost: int
     balance_source: Optional[str] = None
+    workflow_type: str = "standard"
+    workflow_cost: int = 0
+    workflow_preset: Optional[str] = None
     created_at: datetime
 
 

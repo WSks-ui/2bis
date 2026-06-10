@@ -33,6 +33,9 @@ async def list_history(
             quality=h.quality,
             points_cost=h.points_cost,
             balance_source=h.balance_source,
+            workflow_type=h.workflow_type,
+            workflow_cost=h.workflow_cost,
+            workflow_preset=h.workflow_preset,
             created_at=h.created_at,
         )
         for h in histories
