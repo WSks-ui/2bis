@@ -45,9 +45,17 @@
             </button>
           </div>
 
-          <select v-model="size" class="size-select">
-            <option v-for="item in sizes" :key="item.value" :value="item.value">{{ item.label }}</option>
-          </select>
+          <div class="ratio-row">
+            <button
+              v-for="item in sizes"
+              :key="item.value"
+              :class="{ active: size === item.value }"
+              @click="size = item.value"
+            >
+              <strong>{{ item.ratio }}</strong>
+              <span>{{ item.label }}</span>
+            </button>
+          </div>
 
           <button class="btn-generate" :disabled="!canSubmit" @click="handleSubmit">生成</button>
         </div>
@@ -126,10 +134,10 @@ const qualities = [
 ]
 
 const sizes = [
-  { label: '1024×1024', value: '1024x1024' },
-  { label: '1344×768', value: '1344x768' },
-  { label: '768×1344', value: '768x1344' },
-  { label: '2048×2048', value: '2048x2048' }
+  { ratio: '1:1', label: '方图 1024×1024', value: '1024x1024' },
+  { ratio: '16:9', label: '横版 1344×768', value: '1344x768' },
+  { ratio: '9:16', label: '竖版 768×1344', value: '768x1344' },
+  { ratio: '1:1 HD', label: '高清方图 2048×2048', value: '2048x2048' }
 ]
 
 const needImage = computed(() => mode.value !== 'text2img')
@@ -264,7 +272,8 @@ function handleSubmit() {
 .mode-row,
 .workflow-row,
 .controls-row,
-.quality-row {
+.quality-row,
+.ratio-row {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
@@ -274,6 +283,7 @@ function handleSubmit() {
 .mode-row button,
 .workflow-row button,
 .quality-row button,
+.ratio-row button,
 .btn-generate,
 .size-select {
   border: 1px solid rgba(232, 230, 220, 0.12);
@@ -291,7 +301,8 @@ function handleSubmit() {
 
 .mode-row button.active,
 .workflow-row button.active,
-.quality-row button.active {
+.quality-row button.active,
+.ratio-row button.active {
   color: var(--color-orange);
   border-color: rgba(217, 119, 87, 0.34);
   background: rgba(217, 119, 87, 0.1);
@@ -357,6 +368,10 @@ function handleSubmit() {
   flex: 1;
 }
 
+.ratio-row {
+  flex: 1 1 360px;
+}
+
 .quality-row button {
   min-width: 130px;
   padding: 9px 12px;
@@ -366,9 +381,24 @@ function handleSubmit() {
   text-align: left;
 }
 
+.ratio-row button {
+  min-width: 118px;
+  min-height: 54px;
+  padding: 8px 11px;
+  display: grid;
+  gap: 2px;
+  cursor: pointer;
+  text-align: left;
+}
+
 .quality-row span {
   font-size: 11px;
   color: var(--color-mid);
+}
+
+.ratio-row span {
+  color: var(--color-mid);
+  font-size: 11px;
 }
 
 .size-select {
@@ -419,6 +449,7 @@ function handleSubmit() {
   }
 
   .quality-row button,
+  .ratio-row button,
   .size-select,
   .btn-generate {
     width: 100%;

@@ -22,12 +22,17 @@
     </div>
 
     <div class="action-row">
-      <select v-model="size" class="size-select">
-        <option value="1024x1024">1024×1024</option>
-        <option value="1344x768">1344×768</option>
-        <option value="768x1344">768×1344</option>
-        <option value="2048x2048">2048×2048</option>
-      </select>
+      <div class="ratio-row">
+        <button
+          v-for="item in sizes"
+          :key="item.value"
+          :class="{ active: size === item.value }"
+          @click="size = item.value"
+        >
+          <strong>{{ item.ratio }}</strong>
+          <span>{{ item.label }}</span>
+        </button>
+      </div>
       <button class="btn-generate" :disabled="generating || !canSubmit" @click="submit">
         {{ generating ? '提交中' : mode === 'edit' ? '开始编辑' : '开始生成' }}
       </button>
@@ -68,6 +73,13 @@ const qualities = [
   { label: '低质量', value: 'low', cost: 1, source: '优先体验积分' },
   { label: '中质量', value: 'medium', cost: 2, source: '优先体验积分' },
   { label: '高质量', value: 'high', cost: 3, source: '订阅额度' }
+]
+
+const sizes = [
+  { ratio: '1:1', label: '方图 1024×1024', value: '1024x1024' },
+  { ratio: '16:9', label: '横版 1344×768', value: '1344x768' },
+  { ratio: '9:16', label: '竖版 768×1344', value: '768x1344' },
+  { ratio: '1:1 HD', label: '高清方图 2048×2048', value: '2048x2048' }
 ]
 
 const needImage = computed(() => mode.value !== 'text2img')
@@ -160,7 +172,8 @@ function downloadImage() {
 
 .mode-row,
 .quality-row,
-.action-row {
+.action-row,
+.ratio-row {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
@@ -168,6 +181,7 @@ function downloadImage() {
 
 .mode-row button,
 .quality-row button,
+.ratio-row button,
 .btn-generate,
 .btn-download,
 .size-select {
@@ -181,6 +195,7 @@ function downloadImage() {
 
 .mode-row button,
 .quality-row button,
+.ratio-row button,
 .btn-generate,
 .btn-download {
   cursor: pointer;
@@ -191,7 +206,8 @@ function downloadImage() {
 }
 
 .mode-row button.active,
-.quality-row button.active {
+.quality-row button.active,
+.ratio-row button.active {
   color: var(--color-orange);
   border-color: rgba(217, 119, 87, 0.34);
   background: rgba(217, 119, 87, 0.1);
@@ -242,6 +258,24 @@ function downloadImage() {
 .quality-row span {
   color: var(--color-mid);
   font-size: 12px;
+}
+
+.ratio-row {
+  flex: 1 1 360px;
+}
+
+.ratio-row button {
+  min-width: 118px;
+  min-height: 54px;
+  padding: 8px 11px;
+  display: grid;
+  gap: 2px;
+  text-align: left;
+}
+
+.ratio-row span {
+  color: var(--color-mid);
+  font-size: 11px;
 }
 
 .size-select {
