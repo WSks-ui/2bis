@@ -142,9 +142,19 @@ class TrialPack(BaseModel):
     trial_high_quality_limit: int = 0
 
 
+class WorkflowPreset(BaseModel):
+    workflow_type: str
+    workflow_preset: Optional[str] = None
+    name: str
+    description: str
+    costs: dict[str, int]
+    uses_experience_points: bool = False
+
+
 class PlansResponse(BaseModel):
     trial_pack: TrialPack
     subscription_plans: list[SubscriptionPlan]
+    workflow_presets: list[WorkflowPreset] = []
 
 
 class LoginCheckinResponse(BaseModel):

@@ -53,7 +53,16 @@ export const useTasksStore = defineStore('tasks', () => {
     }
   }
 
-  async function addTask({ mode, prompt, quality, size, refImage, refPreview }) {
+  async function addTask({
+    mode,
+    prompt,
+    quality,
+    size,
+    refImage,
+    refPreview,
+    workflowType = 'standard',
+    workflowPreset = '',
+  }) {
     const local = {
       id: `local-${Date.now()}`,
       mode,
@@ -65,9 +74,9 @@ export const useTasksStore = defineStore('tasks', () => {
       rawStatus: 'pending',
       imageUrl: '',
       error: '',
-      workflowType: 'standard',
+      workflowType,
       workflowCost: 0,
-      workflowPreset: '',
+      workflowPreset,
       createdAt: new Date().toISOString(),
     }
     tasks.value.push(local)
@@ -75,13 +84,21 @@ export const useTasksStore = defineStore('tasks', () => {
     try {
       let res
       if (mode === 'text2img') {
-        res = await api.post('/generate', { prompt, quality, size })
+        res = await api.post('/generate', {
+          prompt,
+          quality,
+          size,
+          workflow_type: workflowType,
+          workflow_preset: workflowPreset || null,
+        })
       } else {
         const formData = new FormData()
         formData.append('image', refImage)
         formData.append('prompt', prompt)
         formData.append('quality', quality)
         formData.append('size', size)
+        formData.append('workflow_type', workflowType)
+        if (workflowPreset) formData.append('workflow_preset', workflowPreset)
         res = await api.post('/edits', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         })

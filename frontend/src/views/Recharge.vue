@@ -77,6 +77,24 @@
           <span>高质量</span><strong>3</strong>
         </div>
       </section>
+
+      <section class="workflow-section">
+        <div class="section-head">
+          <h2>工作流计费</h2>
+          <p>专业工作流第一版不单独收费，直接按订阅额度扣费。</p>
+        </div>
+        <div class="workflow-grid">
+          <article v-for="workflow in workflowPresets" :key="workflow.workflow_type" class="workflow-card">
+            <h3>{{ workflow.name }}</h3>
+            <p>{{ workflow.description }}</p>
+            <div class="workflow-costs">
+              <span>低 {{ workflow.costs?.low ?? 0 }}</span>
+              <span>中 {{ workflow.costs?.medium ?? 0 }}</span>
+              <span>高 {{ workflow.costs?.high ?? 0 }}</span>
+            </div>
+          </article>
+        </div>
+      </section>
     </main>
 
     <Teleport to="body">
@@ -114,6 +132,7 @@ const userStore = useUserStore()
 const period = ref('monthly')
 const trialPack = ref({})
 const subscriptionPlans = ref([])
+const workflowPresets = ref([])
 const trialLoading = ref(false)
 const loadingPlanId = ref(null)
 const payDialogVisible = ref(false)
@@ -126,6 +145,21 @@ const fallbackPlans = [
   { id: 3, name: 'Pro', plan_key: 'pro', monthly_price: 149, yearly_price: 1368, monthly_quota: 800 }
 ]
 
+const fallbackWorkflows = [
+  {
+    workflow_type: 'standard',
+    name: '标准生成',
+    description: '低/中质量优先使用体验积分。',
+    costs: { low: 1, medium: 2, high: 3 }
+  },
+  {
+    workflow_type: 'professional',
+    name: '专业工作流',
+    description: '统一消耗订阅额度，不做单独支付。',
+    costs: { low: 1, medium: 2, high: 3 }
+  }
+]
+
 onMounted(async () => {
   await pointsStore.fetchBalance()
   await fetchPlans()
@@ -136,9 +170,11 @@ async function fetchPlans() {
     const res = await api.get('/points/plans')
     trialPack.value = res.data.trial_pack || {}
     subscriptionPlans.value = res.data.subscription_plans || fallbackPlans
+    workflowPresets.value = res.data.workflow_presets || fallbackWorkflows
   } catch (_) {
     trialPack.value = { id: 1, name: 'Trial Pack', price: 5, quota: 30, duration_days: 7 }
     subscriptionPlans.value = fallbackPlans
+    workflowPresets.value = fallbackWorkflows
   }
 }
 
@@ -224,6 +260,60 @@ async function mockPay() {
   gap: 28px;
   align-items: center;
   margin-bottom: 44px;
+}
+
+.workflow-section {
+  margin-top: 34px;
+}
+
+.workflow-section .section-head {
+  align-items: flex-end;
+}
+
+.workflow-section .section-head p {
+  margin: 0;
+  color: var(--color-mid);
+}
+
+.workflow-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.workflow-card {
+  padding: 20px;
+  border: 1px solid rgba(232, 230, 220, 0.1);
+  border-radius: var(--radius-lg);
+  background: rgba(232, 230, 220, 0.04);
+}
+
+.workflow-card h3 {
+  margin: 0 0 8px;
+  color: var(--color-light);
+}
+
+.workflow-card p {
+  min-height: 46px;
+  margin: 0 0 14px;
+  color: var(--color-mid);
+  line-height: 1.6;
+}
+
+.workflow-costs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.workflow-costs span {
+  padding: 5px 9px;
+  border-radius: var(--radius-sm);
+  background: rgba(106, 155, 204, 0.12);
+  color: var(--color-blue);
+  font-family: var(--font-heading);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .plans-header h1,
@@ -497,6 +587,10 @@ button:disabled {
   }
 
   .plan-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .workflow-grid {
     grid-template-columns: 1fr;
   }
 

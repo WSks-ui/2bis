@@ -15,6 +15,7 @@ from app.config import (
     SUBSCRIPTION_PLANS,
     TRIAL_PACK,
     WORKFLOW_QUOTA_COST,
+    WORKFLOW_PRESETS,
 )
 from app.models import User
 
@@ -44,6 +45,24 @@ class QuotaManager:
     @staticmethod
     def get_subscription_plans() -> list[dict]:
         return SUBSCRIPTION_PLANS
+
+    @staticmethod
+    def get_workflow_presets() -> list[dict]:
+        presets: list[dict] = []
+        for preset in WORKFLOW_PRESETS:
+            workflow_type = QuotaManager.normalize_workflow_type(str(preset["workflow_type"]))
+            presets.append(
+                {
+                    **preset,
+                    "workflow_type": workflow_type,
+                    "costs": {
+                        quality: QuotaManager.get_cost(quality, workflow_type)
+                        for quality in QUOTA_COST
+                    },
+                    "uses_experience_points": workflow_type == STANDARD_WORKFLOW_TYPE,
+                }
+            )
+        return presets
 
     @staticmethod
     def get_plan_by_id(plan_id: int) -> dict | None:

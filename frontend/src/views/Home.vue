@@ -16,6 +16,18 @@
           <span>{{ refPreview ? '更换图片' : '上传图片' }}</span>
         </div>
 
+        <div class="workflow-row">
+          <button
+            v-for="item in workflowOptions"
+            :key="item.workflow_type"
+            :class="{ active: selectedWorkflowType === item.workflow_type }"
+            @click="selectWorkflow(item)"
+          >
+            <strong>{{ item.name }}</strong>
+            <span>{{ item.description }}</span>
+          </button>
+        </div>
+
         <textarea
           ref="promptInput"
           v-model="prompt"
@@ -29,7 +41,7 @@
           <div class="quality-row">
             <button v-for="item in qualities" :key="item.value" :class="{ active: quality === item.value }" @click="quality = item.value">
               <strong>{{ item.label }}</strong>
-              <span>{{ item.source }}</span>
+              <span>{{ qualityCost(item.value) }} 额度 · {{ qualitySource }}</span>
             </button>
           </div>
 
@@ -63,6 +75,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import NavBar from '../components/NavBar.vue'
 import TaskCard from '../components/TaskCard.vue'
+import api from '../api'
 import { useTasksStore } from '../stores/tasks'
 import { useUserStore } from '../stores/user'
 import { usePointsStore } from '../stores/points'
@@ -75,6 +88,26 @@ const mode = ref('text2img')
 const prompt = ref('')
 const quality = ref('low')
 const size = ref('1024x1024')
+const selectedWorkflowType = ref('standard')
+const selectedWorkflowPreset = ref('')
+const workflowOptions = ref([
+  {
+    workflow_type: 'standard',
+    workflow_preset: null,
+    name: '标准生成',
+    description: '低/中质量优先体验积分',
+    costs: { low: 1, medium: 2, high: 3 },
+    uses_experience_points: true
+  },
+  {
+    workflow_type: 'professional',
+    workflow_preset: 'pro-detail',
+    name: '专业工作流',
+    description: '按订阅额度扣费',
+    costs: { low: 1, medium: 2, high: 3 },
+    uses_experience_points: false
+  }
+])
 const refImage = ref(null)
 const refPreview = ref('')
 const fileInput = ref(null)
@@ -87,9 +120,9 @@ const modes = [
 ]
 
 const qualities = [
-  { label: '低质量', value: 'low', source: '优先体验积分' },
-  { label: '中质量', value: 'medium', source: '优先体验积分' },
-  { label: '高质量', value: 'high', source: '订阅额度' }
+  { label: '低质量', value: 'low' },
+  { label: '中质量', value: 'medium' },
+  { label: '高质量', value: 'high' }
 ]
 
 const sizes = [
@@ -105,6 +138,15 @@ const canSubmit = computed(() => {
   return Boolean(prompt.value.trim())
 })
 const sortedTasks = computed(() => [...tasksStore.tasks].reverse())
+const selectedWorkflow = computed(() => {
+  return workflowOptions.value.find((item) => item.workflow_type === selectedWorkflowType.value) || workflowOptions.value[0]
+})
+const qualitySource = computed(() => {
+  if (selectedWorkflow.value?.uses_experience_points && quality.value !== 'high') {
+    return '优先体验积分'
+  }
+  return '订阅额度'
+})
 const placeholder = computed(() => {
   if (mode.value === 'text2img') return '描述你想生成的画面'
   if (mode.value === 'ref2img') return '结合参考图描述新画面'
@@ -114,6 +156,7 @@ const placeholder = computed(() => {
 onMounted(async () => {
   await userStore.fetchUserInfo()
   await pointsStore.fetchBalance()
+  await fetchWorkflowOptions()
   tasksStore.fetchTasks().catch(() => {})
 })
 
@@ -128,6 +171,28 @@ function switchMode(nextMode) {
     refPreview.value = ''
   }
   nextTick(() => promptInput.value?.focus())
+}
+
+async function fetchWorkflowOptions() {
+  try {
+    const res = await api.get('/points/plans')
+    const presets = res.data?.workflow_presets
+    if (Array.isArray(presets) && presets.length) {
+      workflowOptions.value = presets
+      if (!presets.some((item) => item.workflow_type === selectedWorkflowType.value)) {
+        selectWorkflow(presets[0])
+      }
+    }
+  } catch (_) {}
+}
+
+function selectWorkflow(item) {
+  selectedWorkflowType.value = item.workflow_type
+  selectedWorkflowPreset.value = item.workflow_preset || ''
+}
+
+function qualityCost(value) {
+  return selectedWorkflow.value?.costs?.[value] ?? 0
 }
 
 function triggerUpload() {
@@ -162,7 +227,9 @@ function handleSubmit() {
     quality: quality.value,
     size: size.value,
     refImage: refImage.value,
-    refPreview: refPreview.value
+    refPreview: refPreview.value,
+    workflowType: selectedWorkflowType.value,
+    workflowPreset: selectedWorkflowPreset.value
   })
 
   prompt.value = ''
@@ -195,6 +262,7 @@ function handleSubmit() {
 }
 
 .mode-row,
+.workflow-row,
 .controls-row,
 .quality-row {
   display: flex;
@@ -204,6 +272,7 @@ function handleSubmit() {
 }
 
 .mode-row button,
+.workflow-row button,
 .quality-row button,
 .btn-generate,
 .size-select {
@@ -221,10 +290,27 @@ function handleSubmit() {
 }
 
 .mode-row button.active,
+.workflow-row button.active,
 .quality-row button.active {
   color: var(--color-orange);
   border-color: rgba(217, 119, 87, 0.34);
   background: rgba(217, 119, 87, 0.1);
+}
+
+.workflow-row button {
+  flex: 1 1 220px;
+  min-height: 66px;
+  padding: 11px 14px;
+  display: grid;
+  gap: 4px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.workflow-row span {
+  color: var(--color-mid);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .upload-row {

@@ -119,6 +119,16 @@ class QuotaManagerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(user.free_points, 10)
         self.assertEqual(user.monthly_quota_remaining, 100)
 
+    def test_workflow_presets_expose_costs(self) -> None:
+        presets = QuotaManager.get_workflow_presets()
+        by_type = {preset["workflow_type"]: preset for preset in presets}
+
+        self.assertIn("standard", by_type)
+        self.assertIn("professional", by_type)
+        self.assertTrue(by_type["standard"]["uses_experience_points"])
+        self.assertFalse(by_type["professional"]["uses_experience_points"])
+        self.assertEqual(by_type["professional"]["costs"]["high"], 3)
+
     async def test_unknown_workflow_is_rejected(self) -> None:
         user_id = await self.create_user()
 

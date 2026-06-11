@@ -4,7 +4,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import User
-from app.schemas import PlansResponse, PointsBalanceResponse, PointsPack, SubscriptionPlan, TrialPack
+from app.schemas import (
+    PlansResponse,
+    PointsBalanceResponse,
+    PointsPack,
+    SubscriptionPlan,
+    TrialPack,
+    WorkflowPreset,
+)
 from app.services.quota_manager import QuotaManager
 
 router = APIRouter(prefix="/points", tags=["points"])
@@ -21,6 +28,9 @@ async def list_plans():
         trial_pack=TrialPack(**QuotaManager.get_trial_pack()),
         subscription_plans=[
             SubscriptionPlan(**plan) for plan in QuotaManager.get_subscription_plans()
+        ],
+        workflow_presets=[
+            WorkflowPreset(**preset) for preset in QuotaManager.get_workflow_presets()
         ],
     )
 

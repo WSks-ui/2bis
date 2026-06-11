@@ -95,3 +95,18 @@ WORKFLOW_QUOTA_COST: dict[str, dict[str, int]] = {
         "high": int(os.getenv("PROFESSIONAL_WORKFLOW_HIGH_COST", str(QUOTA_COST["high"]))),
     },
 }
+
+WORKFLOW_PRESETS: list[dict] = [
+    {
+        "workflow_type": STANDARD_WORKFLOW_TYPE,
+        "workflow_preset": None,
+        "name": "标准生成",
+        "description": "适合日常出图，低/中质量优先使用体验积分。",
+    },
+    {
+        "workflow_type": "professional",
+        "workflow_preset": "pro-detail",
+        "name": "专业工作流",
+        "description": "用于更严格的成片质量测试，统一消耗订阅额度。",
+    },
+]
