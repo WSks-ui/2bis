@@ -22,16 +22,30 @@
     </div>
 
     <div class="action-row">
-      <div class="ratio-row">
-        <button
-          v-for="item in sizes"
-          :key="item.value"
-          :class="{ active: size === item.value }"
-          @click="size = item.value"
-        >
-          <strong>{{ item.ratio }}</strong>
-          <span>{{ item.label }}</span>
-        </button>
+      <div class="size-picker">
+        <div class="ratio-row">
+          <button
+            v-for="group in sizeGroups"
+            :key="group.ratio"
+            :class="{ active: selectedRatio === group.ratio }"
+            @click="selectRatio(group.ratio)"
+          >
+            <strong>{{ group.ratio }}</strong>
+            <span>{{ group.name }}</span>
+          </button>
+        </div>
+
+        <div class="resolution-row">
+          <button
+            v-for="item in availableSizes"
+            :key="item.value"
+            :class="{ active: size === item.value }"
+            @click="size = item.value"
+          >
+            <strong>{{ item.label }}</strong>
+            <span>{{ formatImageSize(item.value) }} · {{ imageMegapixels(item.value) }}</span>
+          </button>
+        </div>
       </div>
       <button class="btn-generate" :disabled="generating || !canSubmit" @click="submit">
         {{ generating ? '提交中' : mode === 'edit' ? '开始编辑' : '开始生成' }}
@@ -49,6 +63,7 @@
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../api'
+import { IMAGE_SIZE_GROUPS, formatImageSize, imageMegapixels } from '../constants/imageSizes'
 import { usePointsStore } from '../stores/points'
 
 const pointsStore = usePointsStore()
@@ -57,6 +72,7 @@ const mode = ref('text2img')
 const prompt = ref('')
 const quality = ref('low')
 const size = ref('1024x1024')
+const selectedRatio = ref('1:1')
 const imageFile = ref(null)
 const preview = ref('')
 const imageUrl = ref('')
@@ -75,18 +91,17 @@ const qualities = [
   { label: '高质量', value: 'high', cost: 3, source: '订阅额度' }
 ]
 
-const sizes = [
-  { ratio: '1:1', label: '方图 1024×1024', value: '1024x1024' },
-  { ratio: '16:9', label: '横版 1344×768', value: '1344x768' },
-  { ratio: '9:16', label: '竖版 768×1344', value: '768x1344' },
-  { ratio: '1:1 HD', label: '高清方图 2048×2048', value: '2048x2048' }
-]
+const sizeGroups = IMAGE_SIZE_GROUPS
 
 const needImage = computed(() => mode.value !== 'text2img')
 const canSubmit = computed(() => {
   if (needImage.value) return Boolean(prompt.value.trim() && imageFile.value)
   return Boolean(prompt.value.trim())
 })
+const selectedSizeGroup = computed(() => {
+  return sizeGroups.find((group) => group.ratio === selectedRatio.value) || sizeGroups[0]
+})
+const availableSizes = computed(() => selectedSizeGroup.value?.sizes || [])
 const placeholder = computed(() => {
   if (mode.value === 'text2img') return '描述你想生成的画面'
   if (mode.value === 'ref2img') return '结合参考图描述新画面'
@@ -104,6 +119,14 @@ function switchMode(nextMode) {
 
 function triggerUpload() {
   fileInput.value?.click()
+}
+
+function selectRatio(ratio) {
+  selectedRatio.value = ratio
+  const group = sizeGroups.find((item) => item.ratio === ratio)
+  if (group && !group.sizes.some((item) => item.value === size.value)) {
+    size.value = group.sizes[0].value
+  }
 }
 
 function handleFileSelect(event) {
@@ -173,7 +196,8 @@ function downloadImage() {
 .mode-row,
 .quality-row,
 .action-row,
-.ratio-row {
+.ratio-row,
+.resolution-row {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
@@ -182,6 +206,7 @@ function downloadImage() {
 .mode-row button,
 .quality-row button,
 .ratio-row button,
+.resolution-row button,
 .btn-generate,
 .btn-download,
 .size-select {
@@ -196,6 +221,7 @@ function downloadImage() {
 .mode-row button,
 .quality-row button,
 .ratio-row button,
+.resolution-row button,
 .btn-generate,
 .btn-download {
   cursor: pointer;
@@ -207,7 +233,8 @@ function downloadImage() {
 
 .mode-row button.active,
 .quality-row button.active,
-.ratio-row button.active {
+.ratio-row button.active,
+.resolution-row button.active {
   color: var(--color-orange);
   border-color: rgba(217, 119, 87, 0.34);
   background: rgba(217, 119, 87, 0.1);
@@ -260,12 +287,19 @@ function downloadImage() {
   font-size: 12px;
 }
 
-.ratio-row {
-  flex: 1 1 360px;
+.size-picker {
+  flex: 1 1 560px;
+  display: grid;
+  gap: 10px;
+}
+
+.ratio-row,
+.resolution-row {
+  width: 100%;
 }
 
 .ratio-row button {
-  min-width: 118px;
+  min-width: 92px;
   min-height: 54px;
   padding: 8px 11px;
   display: grid;
@@ -273,7 +307,17 @@ function downloadImage() {
   text-align: left;
 }
 
-.ratio-row span {
+.resolution-row button {
+  min-width: 142px;
+  min-height: 54px;
+  padding: 8px 11px;
+  display: grid;
+  gap: 2px;
+  text-align: left;
+}
+
+.ratio-row span,
+.resolution-row span {
   color: var(--color-mid);
   font-size: 11px;
 }

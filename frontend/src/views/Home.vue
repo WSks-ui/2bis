@@ -47,13 +47,25 @@
 
           <div class="ratio-row">
             <button
-              v-for="item in sizes"
+              v-for="group in sizeGroups"
+              :key="group.ratio"
+              :class="{ active: selectedRatio === group.ratio }"
+              @click="selectRatio(group.ratio)"
+            >
+              <strong>{{ group.ratio }}</strong>
+              <span>{{ group.name }}</span>
+            </button>
+          </div>
+
+          <div class="resolution-row">
+            <button
+              v-for="item in availableSizes"
               :key="item.value"
               :class="{ active: size === item.value }"
               @click="size = item.value"
             >
-              <strong>{{ item.ratio }}</strong>
-              <span>{{ item.label }}</span>
+              <strong>{{ item.label }}</strong>
+              <span>{{ formatImageSize(item.value) }} · {{ imageMegapixels(item.value) }}</span>
             </button>
           </div>
 
@@ -84,6 +96,7 @@ import { ElMessage } from 'element-plus'
 import NavBar from '../components/NavBar.vue'
 import TaskCard from '../components/TaskCard.vue'
 import api from '../api'
+import { IMAGE_SIZE_GROUPS, formatImageSize, imageMegapixels } from '../constants/imageSizes'
 import { useTasksStore } from '../stores/tasks'
 import { useUserStore } from '../stores/user'
 import { usePointsStore } from '../stores/points'
@@ -96,6 +109,7 @@ const mode = ref('text2img')
 const prompt = ref('')
 const quality = ref('low')
 const size = ref('1024x1024')
+const selectedRatio = ref('1:1')
 const selectedWorkflowType = ref('standard')
 const selectedWorkflowPreset = ref('')
 const workflowOptions = ref([
@@ -133,12 +147,7 @@ const qualities = [
   { label: '高质量', value: 'high' }
 ]
 
-const sizes = [
-  { ratio: '1:1', label: '方图 1024×1024', value: '1024x1024' },
-  { ratio: '16:9', label: '横版 1344×768', value: '1344x768' },
-  { ratio: '9:16', label: '竖版 768×1344', value: '768x1344' },
-  { ratio: '1:1 HD', label: '高清方图 2048×2048', value: '2048x2048' }
-]
+const sizeGroups = IMAGE_SIZE_GROUPS
 
 const needImage = computed(() => mode.value !== 'text2img')
 const canSubmit = computed(() => {
@@ -149,6 +158,10 @@ const sortedTasks = computed(() => [...tasksStore.tasks].reverse())
 const selectedWorkflow = computed(() => {
   return workflowOptions.value.find((item) => item.workflow_type === selectedWorkflowType.value) || workflowOptions.value[0]
 })
+const selectedSizeGroup = computed(() => {
+  return sizeGroups.find((group) => group.ratio === selectedRatio.value) || sizeGroups[0]
+})
+const availableSizes = computed(() => selectedSizeGroup.value?.sizes || [])
 const qualitySource = computed(() => {
   if (selectedWorkflow.value?.uses_experience_points && quality.value !== 'high') {
     return '优先体验积分'
@@ -201,6 +214,14 @@ function selectWorkflow(item) {
 
 function qualityCost(value) {
   return selectedWorkflow.value?.costs?.[value] ?? 0
+}
+
+function selectRatio(ratio) {
+  selectedRatio.value = ratio
+  const group = sizeGroups.find((item) => item.ratio === ratio)
+  if (group && !group.sizes.some((item) => item.value === size.value)) {
+    size.value = group.sizes[0].value
+  }
 }
 
 function triggerUpload() {
@@ -273,7 +294,8 @@ function handleSubmit() {
 .workflow-row,
 .controls-row,
 .quality-row,
-.ratio-row {
+.ratio-row,
+.resolution-row {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
@@ -284,6 +306,7 @@ function handleSubmit() {
 .workflow-row button,
 .quality-row button,
 .ratio-row button,
+.resolution-row button,
 .btn-generate,
 .size-select {
   border: 1px solid rgba(232, 230, 220, 0.12);
@@ -302,7 +325,8 @@ function handleSubmit() {
 .mode-row button.active,
 .workflow-row button.active,
 .quality-row button.active,
-.ratio-row button.active {
+.ratio-row button.active,
+.resolution-row button.active {
   color: var(--color-orange);
   border-color: rgba(217, 119, 87, 0.34);
   background: rgba(217, 119, 87, 0.1);
@@ -369,7 +393,11 @@ function handleSubmit() {
 }
 
 .ratio-row {
-  flex: 1 1 360px;
+  flex: 1 1 100%;
+}
+
+.resolution-row {
+  flex: 1 1 560px;
 }
 
 .quality-row button {
@@ -382,7 +410,17 @@ function handleSubmit() {
 }
 
 .ratio-row button {
-  min-width: 118px;
+  min-width: 92px;
+  min-height: 54px;
+  padding: 8px 11px;
+  display: grid;
+  gap: 2px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.resolution-row button {
+  min-width: 142px;
   min-height: 54px;
   padding: 8px 11px;
   display: grid;
@@ -396,7 +434,8 @@ function handleSubmit() {
   color: var(--color-mid);
 }
 
-.ratio-row span {
+.ratio-row span,
+.resolution-row span {
   color: var(--color-mid);
   font-size: 11px;
 }
@@ -450,6 +489,7 @@ function handleSubmit() {
 
   .quality-row button,
   .ratio-row button,
+  .resolution-row button,
   .size-select,
   .btn-generate {
     width: 100%;
