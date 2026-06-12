@@ -5,6 +5,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import User
 from app.schemas import (
+    GenerationOptionsResponse,
     PlansResponse,
     PointsBalanceResponse,
     PointsPack,
@@ -12,6 +13,7 @@ from app.schemas import (
     TrialPack,
     WorkflowPreset,
 )
+from app.services.generation_options import GenerationOptions
 from app.services.quota_manager import QuotaManager
 
 router = APIRouter(prefix="/points", tags=["points"])
@@ -32,6 +34,11 @@ async def list_plans():
         workflow_presets=[
             WorkflowPreset(**preset) for preset in QuotaManager.get_workflow_presets()
         ],
+        generation_options=GenerationOptionsResponse(
+            qualities=GenerationOptions.get_quality_options(),
+            image_size_groups=GenerationOptions.get_image_size_groups(),
+            constraints=GenerationOptions.get_constraints(),
+        ),
     )
 
 

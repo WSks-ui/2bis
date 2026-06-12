@@ -29,6 +29,23 @@ def _sqlite_columns(cursor, table_name: str) -> set[str]:
     return {row[1] for row in cursor.fetchall()}
 
 
+def _sqlite_add_upstream_audit_columns(cursor, table_name: str, columns: set[str]) -> None:
+    audit_columns = {
+        "upstream_model": "VARCHAR(80)",
+        "upstream_endpoint": "VARCHAR(120)",
+        "upstream_request_quality": "VARCHAR(30)",
+        "upstream_request_size": "VARCHAR(40)",
+        "upstream_response_format": "VARCHAR(30)",
+        "upstream_request_id": "VARCHAR(120)",
+        "upstream_content_type": "VARCHAR(120)",
+        "upstream_elapsed_seconds": "FLOAT",
+        "upstream_payload_length": "INTEGER",
+    }
+    for column_name, column_type in audit_columns.items():
+        if column_name not in columns:
+            cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+
+
 if _is_sqlite:
     @event.listens_for(engine.sync_engine, "connect")
     def _on_sqlite_connect(dbapi_connection, connection_record):
@@ -54,6 +71,7 @@ if _is_sqlite:
                 cursor.execute("ALTER TABLE generate_histories ADD COLUMN workflow_cost INTEGER DEFAULT 0 NOT NULL")
             if "workflow_preset" not in columns:
                 cursor.execute("ALTER TABLE generate_histories ADD COLUMN workflow_preset VARCHAR(80)")
+            _sqlite_add_upstream_audit_columns(cursor, "generate_histories", columns)
 
         if "generation_tasks" in tables:
             columns = _sqlite_columns(cursor, "generation_tasks")
@@ -67,6 +85,9 @@ if _is_sqlite:
                 cursor.execute("ALTER TABLE generation_tasks ADD COLUMN workflow_cost INTEGER DEFAULT 0 NOT NULL")
             if "workflow_preset" not in columns:
                 cursor.execute("ALTER TABLE generation_tasks ADD COLUMN workflow_preset VARCHAR(80)")
+            if "source_image_mime_type" not in columns:
+                cursor.execute("ALTER TABLE generation_tasks ADD COLUMN source_image_mime_type VARCHAR(50)")
+            _sqlite_add_upstream_audit_columns(cursor, "generation_tasks", columns)
 
         if "orders" in tables:
             columns = _sqlite_columns(cursor, "orders")

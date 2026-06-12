@@ -6,6 +6,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import GenerationTask, GenerationTaskStatus, User
 from app.schemas import GenerationTaskResponse
+from app.services.generation_options import GenerationOptions, GenerationOptionsError
 from app.services.quota_manager import QuotaError, QuotaManager
 from app.services.task_queue import enqueue_generation_task
 from app.services.upload_storage import save_upload_file
@@ -26,6 +27,15 @@ def task_response(task: GenerationTask) -> GenerationTaskResponse:
         workflow_type=task.workflow_type,
         workflow_cost=task.workflow_cost,
         workflow_preset=task.workflow_preset,
+        upstream_model=task.upstream_model,
+        upstream_endpoint=task.upstream_endpoint,
+        upstream_request_quality=task.upstream_request_quality,
+        upstream_request_size=task.upstream_request_size,
+        upstream_response_format=task.upstream_response_format,
+        upstream_request_id=task.upstream_request_id,
+        upstream_content_type=task.upstream_content_type,
+        upstream_elapsed_seconds=task.upstream_elapsed_seconds,
+        upstream_payload_length=task.upstream_payload_length,
         image_url=task.image_url,
         error_message=task.error_message,
         created_at=task.created_at,
@@ -58,29 +68,34 @@ async def edit_image(
         )
 
     try:
+        source_image_mime_type = GenerationOptions.validate_upload_image(image_bytes, image.content_type)
+        normalized_quality = GenerationOptions.normalize_quality(quality)
+        normalized_size = GenerationOptions.normalize_size(size)
+        normalized_workflow = QuotaManager.normalize_workflow_type(workflow_type)
+        normalized_workflow_preset = QuotaManager.normalize_workflow_preset(workflow_preset)
         deduction = await QuotaManager.deduct_for_generation(
             db,
             current_user.id,
-            quality,
-            workflow_type,
+            normalized_quality,
+            normalized_workflow,
         )
-    except QuotaError as exc:
+    except (GenerationOptionsError, QuotaError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    normalized_workflow_preset = QuotaManager.normalize_workflow_preset(workflow_preset)
     source_image_path = await save_upload_file(image_bytes, current_user.id, image.filename)
     task = GenerationTask(
         user_id=current_user.id,
         mode="edit",
         prompt=prompt.strip(),
-        quality=quality,
-        size=size,
+        quality=normalized_quality,
+        size=normalized_size,
         points_cost=deduction.cost,
         balance_source=deduction.balance_source,
         workflow_type=deduction.workflow_type,
         workflow_cost=deduction.workflow_cost,
         workflow_preset=normalized_workflow_preset,
         source_image_path=source_image_path,
+        source_image_mime_type=source_image_mime_type,
         max_retries=GENERATION_MAX_RETRIES,
     )
     db.add(task)

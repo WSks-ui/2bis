@@ -55,6 +55,15 @@ class GenerateResponse(BaseModel):
     workflow_type: str = "standard"
     workflow_cost: int = 0
     workflow_preset: Optional[str] = None
+    upstream_model: Optional[str] = None
+    upstream_endpoint: Optional[str] = None
+    upstream_request_quality: Optional[str] = None
+    upstream_request_size: Optional[str] = None
+    upstream_response_format: Optional[str] = None
+    upstream_request_id: Optional[str] = None
+    upstream_content_type: Optional[str] = None
+    upstream_elapsed_seconds: Optional[float] = None
+    upstream_payload_length: Optional[int] = None
     created_at: datetime
 
 
@@ -70,6 +79,15 @@ class GenerationTaskResponse(BaseModel):
     workflow_type: str = "standard"
     workflow_cost: int = 0
     workflow_preset: Optional[str] = None
+    upstream_model: Optional[str] = None
+    upstream_endpoint: Optional[str] = None
+    upstream_request_quality: Optional[str] = None
+    upstream_request_size: Optional[str] = None
+    upstream_response_format: Optional[str] = None
+    upstream_request_id: Optional[str] = None
+    upstream_content_type: Optional[str] = None
+    upstream_elapsed_seconds: Optional[float] = None
+    upstream_payload_length: Optional[int] = None
     image_url: Optional[str] = None
     error_message: Optional[str] = None
     created_at: datetime
@@ -88,6 +106,15 @@ class HistoryItem(BaseModel):
     workflow_type: str = "standard"
     workflow_cost: int = 0
     workflow_preset: Optional[str] = None
+    upstream_model: Optional[str] = None
+    upstream_endpoint: Optional[str] = None
+    upstream_request_quality: Optional[str] = None
+    upstream_request_size: Optional[str] = None
+    upstream_response_format: Optional[str] = None
+    upstream_request_id: Optional[str] = None
+    upstream_content_type: Optional[str] = None
+    upstream_elapsed_seconds: Optional[float] = None
+    upstream_payload_length: Optional[int] = None
     created_at: datetime
 
 
@@ -151,10 +178,40 @@ class WorkflowPreset(BaseModel):
     uses_experience_points: bool = False
 
 
+class QualityOption(BaseModel):
+    label: str
+    value: str
+
+
+class ImageSizeOption(BaseModel):
+    label: str
+    value: str
+
+
+class ImageSizeGroup(BaseModel):
+    ratio: str
+    name: str
+    sizes: list[ImageSizeOption]
+
+
+class GenerationConstraints(BaseModel):
+    max_long_edge: int
+    max_pixels: int
+    min_edge: int
+    allowed_upload_mime_types: list[str]
+
+
+class GenerationOptionsResponse(BaseModel):
+    qualities: list[QualityOption]
+    image_size_groups: list[ImageSizeGroup]
+    constraints: GenerationConstraints
+
+
 class PlansResponse(BaseModel):
     trial_pack: TrialPack
     subscription_plans: list[SubscriptionPlan]
     workflow_presets: list[WorkflowPreset] = []
+    generation_options: GenerationOptionsResponse
 
 
 class LoginCheckinResponse(BaseModel):

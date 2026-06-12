@@ -36,6 +36,15 @@ async def list_history(
             workflow_type=h.workflow_type,
             workflow_cost=h.workflow_cost,
             workflow_preset=h.workflow_preset,
+            upstream_model=h.upstream_model,
+            upstream_endpoint=h.upstream_endpoint,
+            upstream_request_quality=h.upstream_request_quality,
+            upstream_request_size=h.upstream_request_size,
+            upstream_response_format=h.upstream_response_format,
+            upstream_request_id=h.upstream_request_id,
+            upstream_content_type=h.upstream_content_type,
+            upstream_elapsed_seconds=h.upstream_elapsed_seconds,
+            upstream_payload_length=h.upstream_payload_length,
             created_at=h.created_at,
         )
         for h in histories

@@ -9,6 +9,7 @@ from app.dependencies import get_current_user
 from app.config import GENERATION_MAX_RETRIES
 from app.models import GenerationTask, GenerationTaskStatus, User
 from app.schemas import GenerateRequest, GenerationTaskResponse
+from app.services.generation_options import GenerationOptions, GenerationOptionsError
 from app.services.quota_manager import QuotaError, QuotaManager
 from app.services.task_queue import enqueue_generation_task
 
@@ -28,6 +29,15 @@ def task_response(task: GenerationTask) -> GenerationTaskResponse:
         workflow_type=task.workflow_type,
         workflow_cost=task.workflow_cost,
         workflow_preset=task.workflow_preset,
+        upstream_model=task.upstream_model,
+        upstream_endpoint=task.upstream_endpoint,
+        upstream_request_quality=task.upstream_request_quality,
+        upstream_request_size=task.upstream_request_size,
+        upstream_response_format=task.upstream_response_format,
+        upstream_request_id=task.upstream_request_id,
+        upstream_content_type=task.upstream_content_type,
+        upstream_elapsed_seconds=task.upstream_elapsed_seconds,
+        upstream_payload_length=task.upstream_payload_length,
         image_url=task.image_url,
         error_message=task.error_message,
         created_at=task.created_at,
@@ -46,22 +56,29 @@ async def generate(
         raise HTTPException(status_code=400, detail="Prompt cannot be empty")
 
     try:
+        quality = GenerationOptions.normalize_quality(data.quality)
+        size = GenerationOptions.normalize_size(data.size)
+        workflow_type = QuotaManager.normalize_workflow_type(data.workflow_type)
+        workflow_preset = QuotaManager.normalize_workflow_preset(data.workflow_preset)
+    except (GenerationOptionsError, QuotaError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    try:
         deduction = await QuotaManager.deduct_for_generation(
             db,
             current_user.id,
-            data.quality,
-            data.workflow_type,
+            quality,
+            workflow_type,
         )
     except QuotaError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    workflow_preset = QuotaManager.normalize_workflow_preset(data.workflow_preset)
     task = GenerationTask(
         user_id=current_user.id,
         mode="text2img",
         prompt=data.prompt.strip(),
-        quality=data.quality,
-        size=data.size,
+        quality=quality,
+        size=size,
         points_cost=deduction.cost,
         balance_source=deduction.balance_source,
         workflow_type=deduction.workflow_type,
