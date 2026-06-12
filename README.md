@@ -12,7 +12,7 @@
 - 标准生成支持优先使用体验积分，专业工作流统一使用订阅额度。
 - 生成任务异步入队，由 Redis + worker 执行，失败后按原扣费来源退款。
 - 支持文生图、参考图/编辑图上传、生成历史、任务状态轮询。
-- 前端支持先选比例、再选分辨率，尺寸配置集中在 `frontend/src/constants/imageSizes.js`。
+- 前端支持先选比例、再选分辨率，后端通过 `GenerationOptions` 统一下发并校验生成选项。
 - 本地开发使用模拟支付回调，便于验证账务闭环。
 
 ## 技术栈
@@ -165,7 +165,7 @@ alembic upgrade head
 - `workflow_cost`
 - `workflow_preset`
 
-前端从 `/api/points/plans` 获取 `workflow_presets`，当前包含：
+前端从 `/api/points/plans` 获取 `workflow_presets` 和 `generation_options`。当前工作流包含：
 
 | workflow_type | preset | 说明 |
 | --- | --- | --- |
@@ -184,7 +184,15 @@ alembic upgrade head
 
 ## 图片比例与分辨率
 
-前端尺寸选项由 `frontend/src/constants/imageSizes.js` 统一维护。当前 UI 是两级选择：
+尺寸、质量和上传图片类型由后端 `backend/app/services/generation_options.py` 统一维护并校验。前端从 `/api/points/plans` 的 `generation_options` 读取配置，`frontend/src/constants/imageSizes.js` 只作为后端不可用时的本地兜底。
+
+当前硬限制：
+
+- 最长边不超过 `3840`。
+- 总像素不超过 `8,294,400`。
+- 上传参考图/编辑图仅接受 PNG、JPG/JPEG、WebP，并会校验文件头。
+
+当前 UI 是两级选择：
 
 1. 选择比例。
 2. 选择该比例下的具体分辨率。
@@ -204,16 +212,16 @@ alembic upgrade head
 
 | 比例 | 分辨率 |
 | --- | --- |
-| 21:9 | `4032x1728`, `2688x1152` |
-| 16:9 | `3840x2160`, `2688x1536`, `1344x768` |
-| 3:2 | `3456x2304`, `2304x1536` |
-| 4:3 | `3072x2304`, `2304x1792`, `2048x1536`, `1536x1152`, `1152x896` |
-| 1:1 | `2048x2048`, `1024x1024` |
+| 21:9 | `3584x1536`, `2688x1152`, `1792x768` |
+| 16:9 | `3840x2160`, `2560x1440`, `1920x1080`, `1344x768` |
+| 3:2 | `3456x2304`, `2304x1536`, `1728x1152` |
+| 4:3 | `3072x2304`, `2048x1536`, `1536x1152`, `1152x896` |
+| 1:1 | `2048x2048`, `1536x1536`, `1024x1024` |
 | 3:4 | `2304x3072`, `1792x2304`, `1536x2048`, `1152x1536`, `896x1152` |
-| 2:3 | `2304x3456`, `1536x2304` |
-| 9:16 | `2160x3840`, `1440x2560`, `720x1280` |
+| 2:3 | `2304x3456`, `1536x2304`, `1152x1728` |
+| 9:16 | `2160x3840`, `1440x2560`, `1080x1920`, `720x1280` |
 
-当前配置按 `8,294,400` 像素上限筛选。部分平台白名单尺寸如果超过该上限，暂未加入前端可选项；如果确认 API 对白名单尺寸有例外，可以只调整 `imageSizes.js`。
+注意：即使用户绕过前端直接请求 `/api/generate` 或 `/api/edits`，后端也会在扣费前校验 `quality`、`size`、`workflow_type` 和上传文件类型。非法请求不会进入扣费或上游 AI 调用。
 
 ## 关键 API
 
@@ -224,7 +232,7 @@ alembic upgrade head
 | `POST` | `/api/auth/checkin` | 每日签到 | 是 |
 | `GET` | `/api/auth/checkin/status` | 签到状态 | 是 |
 | `GET` | `/api/points/balance` | 体验积分和订阅额度余额 | 是 |
-| `GET` | `/api/points/plans` | 体验包、订阅套餐、工作流预设 | 否 |
+| `GET` | `/api/points/plans` | 体验包、订阅套餐、工作流预设、生成选项 | 否 |
 | `GET` | `/api/points/packs` | 兼容旧接口，返回空列表 | 否 |
 | `GET` | `/api/membership/plans` | 兼容旧接口，返回空列表 | 否 |
 | `POST` | `/api/payment/orders` | 创建体验包或订阅订单 | 是 |
@@ -241,7 +249,7 @@ alembic upgrade head
 
 ```text
 前端提交生成请求
-  -> 后端校验 prompt / quality / workflow_type
+  -> 后端校验 prompt / quality / size / workflow_type / 上传文件
   -> QuotaManager 扣费并记录 balance_source
   -> 创建 generation_tasks
   -> Redis 入队
@@ -267,10 +275,14 @@ alembic upgrade head
 | `AI_API_URL` | `https://www.aiartmirror.com/v1` | 图片 API 地址 |
 | `AI_API_KEY` | 空 | 图片 API Key |
 | `AI_TIMEOUT` | `2400` | AI 请求超时秒数 |
-| `AI_MAX_CONCURRENT` | `1000` | AI 客户端并发限制 |
+| `AI_IMAGE_RESPONSE_FORMAT` | 空 | 可选图片 API 返回格式；当前平台不支持 `response_format`，保持为空 |
+| `AI_MAX_CONCURRENT` | `4` | AI 客户端并发限制 |
+| `AI_MIN_REQUEST_INTERVAL_SECONDS` | `0.3` | AI 请求最小发送间隔，用于避开上游分钟级限流 |
+| `AI_RATE_LIMIT_MAX_RETRIES` | `6` | 上游 429 限流后的最大重试次数 |
+| `AI_RATE_LIMIT_RETRY_DELAY_SECONDS` | `1.0` | 未返回等待时间时的 429 基础退避秒数 |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis 地址 |
 | `GENERATION_QUEUE_NAME` | `generation_tasks` | 任务队列名 |
-| `GENERATION_WORKER_CONCURRENCY` | `100` | worker 并发 |
+| `GENERATION_WORKER_CONCURRENCY` | `4` | worker 并发 |
 | `GENERATION_MAX_RETRIES` | `2` | 任务最大重试次数 |
 | `GENERATION_TASK_TIMEOUT` | `3600` | 单任务超时秒数 |
 | `GENERATION_PROCESSING_RECOVERY_SECONDS` | `3900` | 卡住任务恢复阈值 |
@@ -313,6 +325,7 @@ S3 存储相关变量：
 - `generation_tasks.workflow_type`
 - `generation_tasks.workflow_cost`
 - `generation_tasks.workflow_preset`
+- `generation_tasks.source_image_mime_type`
 - `generate_histories.points_cost`
 - `generate_histories.balance_source`
 - `generate_histories.workflow_type`
@@ -330,11 +343,11 @@ S3 存储相关变量：
 
 ## 测试与构建
 
-后端额度测试：
+后端核心测试：
 
 ```bash
 cd backend
-python -m unittest tests.test_quota_manager
+python -m unittest tests.test_generation_options tests.test_ai_client tests.test_worker_recovery tests.test_quota_manager
 ```
 
 前端构建：
