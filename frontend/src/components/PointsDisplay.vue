@@ -43,24 +43,24 @@ const iconText = computed(() => {
 .points-display {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  border-radius: 20px;
-  background: rgba(120, 140, 93, 0.1);
-  border: 1px solid rgba(120, 140, 93, 0.22);
+  gap: 6px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
   white-space: nowrap;
 }
 
 .points-display--experience,
 .points-free {
-  background: rgba(106, 155, 204, 0.1);
-  border-color: rgba(106, 155, 204, 0.22);
+  background: transparent;
+  border-color: transparent;
 }
 
 .coin-icon {
+  display: none;
   width: 18px;
   height: 18px;
-  display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
@@ -78,16 +78,16 @@ const iconText = computed(() => {
 
 .points-value {
   font-family: var(--font-heading);
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--color-light);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-blue);
 }
 
 .points-label {
   font-family: var(--font-heading);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  color: var(--color-mid);
+  color: var(--color-muted);
 }
 
 @media (max-width: 640px) {

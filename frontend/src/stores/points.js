@@ -17,6 +17,9 @@ export const usePointsStore = defineStore('points', () => {
 
   const isMember = ref(false)
   const memberExpireAt = ref(null)
+  const loading = ref(false)
+  const lastError = ref('')
+  let balanceRequest = null
 
   const hasQuota = computed(() => monthlyQuotaRemaining.value > 0)
   const planLabel = computed(() => {
@@ -46,12 +49,29 @@ export const usePointsStore = defineStore('points', () => {
   }
 
   async function fetchBalance() {
+    if (balanceRequest) return balanceRequest
+    loading.value = true
+    lastError.value = ''
+    balanceRequest = api.get('/points/balance')
+      .then((res) => {
+        applyBalance(res.data)
+        return res.data
+      })
+      .catch((e) => {
+        lastError.value = e.response?.data?.detail || '余额刷新失败'
+        throw e
+      })
+      .finally(() => {
+        loading.value = false
+        balanceRequest = null
+      })
+    return balanceRequest
+  }
+
+  async function refreshBalanceQuietly() {
     try {
-      const res = await api.get('/points/balance')
-      applyBalance(res.data)
-    } catch (e) {
-      console.error('Failed to fetch balance', e)
-    }
+      await fetchBalance()
+    } catch (_) {}
   }
 
   return {
@@ -68,9 +88,12 @@ export const usePointsStore = defineStore('points', () => {
     trialExpireAt,
     isMember,
     memberExpireAt,
+    loading,
+    lastError,
     hasQuota,
     planLabel,
     applyBalance,
-    fetchBalance
+    fetchBalance,
+    refreshBalanceQuietly
   }
 })

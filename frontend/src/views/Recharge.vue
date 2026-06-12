@@ -1,96 +1,103 @@
 <template>
-  <div class="plans-page">
+  <div class="plans-page paper-page">
     <NavBar />
 
-    <main class="page-container">
-      <section class="plans-header">
+    <main class="plans-shell">
+      <section class="plans-hero">
         <div>
-          <h1>选择创作计划</h1>
-          <p>体验积分用于低/中质量试用，订阅额度用于完整创作能力。</p>
+          <p class="eyebrow">Plans & Quota</p>
+          <h1>计划与订阅</h1>
+          <p>选择适合你的计划，解锁更高质量与专业工作流。专业工作流第一版统一按订阅额度扣费。</p>
         </div>
-        <div class="balance-strip">
-          <div>
-            <span class="balance-label">体验积分</span>
+        <div class="balance-cards">
+          <article class="surface-card balance-card">
+            <span>体验积分</span>
             <strong>{{ pointsStore.freePoints }}</strong>
-          </div>
-          <div>
-            <span class="balance-label">订阅额度</span>
+            <small>用于标准生成的低/中质量试用</small>
+          </article>
+          <article class="surface-card balance-card highlight">
+            <span>订阅额度</span>
             <strong>{{ pointsStore.monthlyQuotaRemaining }}</strong>
-          </div>
-        </div>
-      </section>
-
-      <section class="trial-band">
-        <div class="trial-copy">
-          <span class="eyebrow">新手体验包</span>
-          <h2>{{ trialPack.name || 'Trial Pack' }}</h2>
-          <p>7 天内使用 {{ trialPack.quota || 30 }} 订阅额度，支持高质量生成。</p>
-        </div>
-        <div class="trial-action">
-          <div class="trial-price">¥{{ trialPack.price || 5 }}</div>
-          <button class="btn-primary" :disabled="pointsStore.trialActivated || trialLoading" @click="buyTrial">
-            {{ pointsStore.trialActivated ? '已使用' : trialLoading ? '创建中' : '立即体验' }}
-          </button>
-        </div>
-      </section>
-
-      <section class="subscription-section">
-        <div class="section-head">
-          <h2>订阅计划</h2>
-          <div class="period-toggle">
-            <button :class="{ active: period === 'monthly' }" @click="period = 'monthly'">月付</button>
-            <button :class="{ active: period === 'yearly' }" @click="period = 'yearly'">年付</button>
-          </div>
-        </div>
-
-        <div class="plan-grid">
-          <article v-for="plan in subscriptionPlans" :key="plan.id" class="plan-card">
-            <div class="plan-top">
-              <h3>{{ plan.name }}</h3>
-              <span v-if="plan.plan_key === 'creator'" class="recommend-tag">推荐</span>
-            </div>
-            <div class="plan-price">
-              ¥{{ planPrice(plan) }}
-              <span>/{{ period === 'monthly' ? '月' : '年' }}</span>
-            </div>
-            <div class="quota-line">{{ plan.monthly_quota }} 额度 / 月</div>
-            <ul class="plan-rules">
-              <li>低质量：1 额度</li>
-              <li>中质量：2 额度</li>
-              <li>高质量：3 额度</li>
+            <small>用于高质量生成与专业工作流</small>
+          </article>
+          <article class="surface-card balance-card rules">
+            <span>计费规则说明</span>
+            <ul>
+              <li>体验积分仅用于标准生成的低/中质量</li>
+              <li>订阅额度用于高质量与专业工作流</li>
+              <li>失败任务会自动退款</li>
             </ul>
-            <button class="btn-secondary" :disabled="loadingPlanId === plan.id" @click="buyPlan(plan)">
-              {{ loadingPlanId === plan.id ? '创建中' : '订阅' }}
-            </button>
           </article>
         </div>
       </section>
 
-      <section class="rules-section">
-        <div>
-          <h2>扣费规则</h2>
-          <p>低/中质量优先使用体验积分；体验积分不足以完整支付时，改用订阅额度。高质量始终只使用订阅额度。</p>
-        </div>
-        <div class="rule-table">
-          <span>低质量</span><strong>1</strong>
-          <span>中质量</span><strong>2</strong>
-          <span>高质量</span><strong>3</strong>
-        </div>
+      <section class="billing-toggle">
+        <button :class="{ active: period === 'monthly' }" @click="period = 'monthly'">按月</button>
+        <button :class="{ active: period === 'yearly' }" @click="period = 'yearly'">
+          按年 <span>省约 {{ yearlySaving }}%</span>
+        </button>
       </section>
 
-      <section class="workflow-section">
-        <div class="section-head">
-          <h2>工作流计费</h2>
-          <p>专业工作流第一版不单独收费，直接按订阅额度扣费。</p>
+      <section class="plan-grid">
+        <article class="plan-card surface-card trial-card">
+          <div class="plan-head">
+            <h2>{{ trialPack.name || '新手体验包' }}</h2>
+          </div>
+          <div class="plan-price">
+            ¥{{ trialPack.price || 5 }}<span>/{{ trialPack.duration_days || 7 }} 天</span>
+          </div>
+          <p class="quota-line">{{ trialPack.quota || 30 }} 额度 / 体验期</p>
+          <ul>
+            <li>适合首次测试生成质量</li>
+            <li>支持高质量生成</li>
+            <li>不可与有效订阅叠加购买</li>
+          </ul>
+          <button class="plan-button" :disabled="pointsStore.trialActivated || trialLoading" @click="buyTrial">
+            {{ pointsStore.trialActivated ? '已使用' : trialLoading ? '创建中' : '立即体验' }}
+          </button>
+        </article>
+
+        <article
+          v-for="plan in subscriptionPlans"
+          :key="plan.id"
+          class="plan-card surface-card"
+          :class="{ featured: plan.plan_key === 'creator' }"
+        >
+          <div v-if="plan.plan_key === 'creator'" class="recommend-tag">推荐</div>
+          <div class="plan-head">
+            <h2>{{ plan.name }}</h2>
+          </div>
+          <div class="plan-price">
+            ¥{{ planPrice(plan) }}<span>/{{ period === 'monthly' ? '月' : '年' }}</span>
+          </div>
+          <p class="quota-line">{{ plan.monthly_quota }} 额度 / 月</p>
+          <ul>
+            <li>标准生成（低/中/高）</li>
+            <li>专业工作流</li>
+            <li>并发任务 {{ concurrencyText(plan) }}</li>
+            <li v-if="plan.plan_key === 'creator'">优先生成通道</li>
+            <li v-if="plan.plan_key === 'pro'">更高任务容量</li>
+          </ul>
+          <button class="plan-button" :class="{ primary: plan.plan_key === 'creator' }" :disabled="loadingPlanId === plan.id" @click="buyPlan(plan)">
+            {{ loadingPlanId === plan.id ? '创建中' : `订阅 ${plan.name}` }}
+          </button>
+        </article>
+      </section>
+
+      <section class="workflow-section surface-card">
+        <div class="workflow-copy">
+          <p class="eyebrow">Workflow Billing</p>
+          <h2>专业工作流暂不单独支付</h2>
+          <p>第一版只走额度扣费。上线测试后再根据真实成本、成功率和用户复用率调整额度。</p>
         </div>
         <div class="workflow-grid">
           <article v-for="workflow in workflowPresets" :key="workflow.workflow_type" class="workflow-card">
             <h3>{{ workflow.name }}</h3>
             <p>{{ workflow.description }}</p>
             <div class="workflow-costs">
-              <span>低 {{ workflow.costs?.low ?? 0 }}</span>
-              <span>中 {{ workflow.costs?.medium ?? 0 }}</span>
-              <span>高 {{ workflow.costs?.high ?? 0 }}</span>
+              <span>低 {{ workflow.costs?.low ?? 0 }} 额度</span>
+              <span>中 {{ workflow.costs?.medium ?? 0 }} 额度</span>
+              <span>高 {{ workflow.costs?.high ?? 0 }} 额度</span>
             </div>
           </article>
         </div>
@@ -108,7 +115,7 @@
           </div>
           <div class="modal-actions">
             <button class="btn-ghost" @click="payDialogVisible = false">取消</button>
-            <button class="btn-primary" :disabled="paying" @click="mockPay">
+            <button class="btn-black btn-pay" :disabled="paying" @click="mockPay">
               {{ paying ? '支付中' : '模拟支付' }}
             </button>
           </div>
@@ -119,7 +126,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../api'
 import NavBar from '../components/NavBar.vue'
@@ -160,8 +167,14 @@ const fallbackWorkflows = [
   }
 ]
 
+const yearlySaving = computed(() => {
+  const creator = subscriptionPlans.value.find((plan) => plan.plan_key === 'creator') || subscriptionPlans.value[0]
+  if (!creator?.monthly_price || !creator?.yearly_price) return 20
+  return Math.max(0, Math.round((1 - creator.yearly_price / (creator.monthly_price * 12)) * 100))
+})
+
 onMounted(async () => {
-  await pointsStore.fetchBalance()
+  await pointsStore.refreshBalanceQuietly()
   await fetchPlans()
 })
 
@@ -172,14 +185,21 @@ async function fetchPlans() {
     subscriptionPlans.value = res.data.subscription_plans || fallbackPlans
     workflowPresets.value = res.data.workflow_presets || fallbackWorkflows
   } catch (_) {
-    trialPack.value = { id: 1, name: 'Trial Pack', price: 5, quota: 30, duration_days: 7 }
+    trialPack.value = { id: 1, name: '新手体验包', price: 5, quota: 30, duration_days: 7 }
     subscriptionPlans.value = fallbackPlans
     workflowPresets.value = fallbackWorkflows
+    ElMessage.warning('计划信息加载失败，已显示默认配置')
   }
 }
 
 function planPrice(plan) {
   return period.value === 'monthly' ? plan.monthly_price : plan.yearly_price
+}
+
+function concurrencyText(plan) {
+  if (plan.plan_key === 'pro') return '10 个'
+  if (plan.plan_key === 'creator') return '5 个'
+  return '2 个'
 }
 
 async function buyTrial() {
@@ -230,8 +250,7 @@ async function mockPay() {
     await api.post(`/payment/mock-pay-callback?order_no=${currentOrder.value.order_no}`)
     payDialogVisible.value = false
     ElMessage.success('支付成功')
-    await pointsStore.fetchBalance()
-    await userStore.fetchUserInfo()
+    await userStore.refreshUserInfoQuietly()
   } catch (e) {
     ElMessage.error(e.response?.data?.detail || '支付失败')
   } finally {
@@ -241,312 +260,306 @@ async function mockPay() {
 </script>
 
 <style scoped>
-.plans-page {
-  min-height: 100vh;
-  background: var(--color-dark);
-}
-
-.page-container {
-  max-width: 1120px;
+.plans-shell {
+  max-width: 1260px;
   margin: 0 auto;
-  padding: 48px 24px 80px;
+  padding: 42px 28px 100px;
 }
 
-.plans-header,
-.trial-band,
-.rules-section {
-  display: flex;
-  justify-content: space-between;
-  gap: 28px;
-  align-items: center;
-  margin-bottom: 44px;
+.plans-hero {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.9fr) 1.45fr;
+  gap: 34px;
+  align-items: end;
+}
+
+.eyebrow {
+  margin: 0 0 9px;
+  color: var(--color-muted);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.plans-hero h1,
+.workflow-copy h2 {
+  margin: 0;
+  font-size: clamp(34px, 5vw, 58px);
+  letter-spacing: -0.06em;
+}
+
+.plans-hero p,
+.workflow-copy p {
+  max-width: 520px;
+  margin: 12px 0 0;
+  color: var(--color-muted);
+  font-size: 15px;
+}
+
+.balance-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.balance-card {
+  min-height: 138px;
+  padding: 20px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.balance-card span {
+  color: var(--color-muted);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.balance-card strong {
+  color: var(--color-ink);
+  font-family: var(--font-heading);
+  font-size: 34px;
+  line-height: 1;
+}
+
+.balance-card.highlight strong {
+  color: var(--color-blue);
+}
+
+.balance-card small,
+.balance-card li {
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.balance-card ul,
+.plan-card ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.balance-card li::before,
+.plan-card li::before {
+  content: '✓';
+  margin-right: 8px;
+  color: var(--color-green);
+  font-family: var(--font-ui);
+  font-weight: 900;
+}
+
+.billing-toggle {
+  width: max-content;
+  margin: 28px 0 22px;
+  padding: 4px;
+  display: inline-flex;
+  gap: 4px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.billing-toggle button {
+  min-width: 76px;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.billing-toggle button.active {
+  background: #fff;
+  color: var(--color-ink);
+  box-shadow: var(--shadow-sm);
+}
+
+.billing-toggle span {
+  color: var(--color-blue);
+  font-size: 11px;
+}
+
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+  align-items: stretch;
+}
+
+.plan-card {
+  position: relative;
+  min-height: 340px;
+  padding: 26px 22px 20px;
+  display: grid;
+  grid-template-rows: auto auto auto 1fr auto;
+  gap: 16px;
+}
+
+.plan-card.featured {
+  border-color: var(--color-ink);
+  box-shadow: 0 0 0 1px var(--color-ink), var(--shadow-md);
+}
+
+.recommend-tag {
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  padding: 5px 16px;
+  border: 1px solid var(--color-ink);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--color-ink);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 900;
+  transform: translateX(-50%);
+}
+
+.plan-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.plan-price {
+  color: var(--color-ink);
+  font-family: var(--font-heading);
+  font-size: 36px;
+  font-weight: 850;
+  letter-spacing: -0.04em;
+}
+
+.plan-price span {
+  margin-left: 4px;
+  color: var(--color-muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.quota-line {
+  margin: 0;
+  color: var(--color-muted);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.plan-card li {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.plan-button {
+  min-height: 44px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.76);
+  color: var(--color-ink);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.plan-button.primary {
+  border-color: var(--color-ink);
+  background: linear-gradient(180deg, #252525, #111);
+  color: #fff;
+}
+
+.plan-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .workflow-section {
-  margin-top: 34px;
+  margin-top: 32px;
+  padding: 26px;
+  display: grid;
+  grid-template-columns: 0.85fr 1.4fr;
+  gap: 24px;
+  align-items: start;
 }
 
-.workflow-section .section-head {
-  align-items: flex-end;
-}
-
-.workflow-section .section-head p {
-  margin: 0;
-  color: var(--color-mid);
+.workflow-copy h2 {
+  font-size: clamp(26px, 3vw, 38px);
 }
 
 .workflow-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
+  gap: 14px;
 }
 
 .workflow-card {
-  padding: 20px;
-  border: 1px solid rgba(232, 230, 220, 0.1);
-  border-radius: var(--radius-lg);
-  background: rgba(232, 230, 220, 0.04);
+  padding: 17px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.62);
 }
 
 .workflow-card h3 {
-  margin: 0 0 8px;
-  color: var(--color-light);
+  margin: 0 0 7px;
+  font-size: 16px;
 }
 
 .workflow-card p {
-  min-height: 46px;
+  min-height: 42px;
   margin: 0 0 14px;
-  color: var(--color-mid);
-  line-height: 1.6;
+  color: var(--color-muted);
+  font-size: 13px;
 }
 
 .workflow-costs {
   display: flex;
-  gap: 8px;
   flex-wrap: wrap;
+  gap: 8px;
 }
 
 .workflow-costs span {
   padding: 5px 9px;
-  border-radius: var(--radius-sm);
-  background: rgba(106, 155, 204, 0.12);
+  border-radius: 999px;
+  background: rgba(60, 110, 232, 0.08);
   color: var(--color-blue);
-  font-family: var(--font-heading);
+  font-family: var(--font-ui);
   font-size: 12px;
-  font-weight: 700;
-}
-
-.plans-header h1,
-.trial-copy h2,
-.section-head h2,
-.rules-section h2 {
-  margin: 0;
-  font-family: var(--font-heading);
-  color: var(--color-light);
-}
-
-.plans-header h1 {
-  font-size: 38px;
-}
-
-.plans-header p,
-.trial-copy p,
-.rules-section p {
-  color: var(--color-mid);
-  line-height: 1.7;
-  margin: 10px 0 0;
-}
-
-.balance-strip {
-  display: flex;
-  gap: 12px;
-}
-
-.balance-strip > div {
-  min-width: 124px;
-  padding: 14px 16px;
-  border: 1px solid rgba(232, 230, 220, 0.1);
-  border-radius: var(--radius-md);
-  background: rgba(232, 230, 220, 0.04);
-}
-
-.balance-label,
-.eyebrow {
-  display: block;
-  color: var(--color-mid);
-  font-family: var(--font-heading);
-  font-size: 12px;
-  font-weight: 700;
-  margin-bottom: 6px;
-}
-
-.balance-strip strong {
-  color: var(--color-light);
-  font-size: 24px;
-}
-
-.trial-band {
-  padding: 28px;
-  border: 1px solid rgba(217, 119, 87, 0.24);
-  border-radius: var(--radius-lg);
-  background: rgba(217, 119, 87, 0.07);
-}
-
-.trial-action {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-}
-
-.trial-price,
-.plan-price {
-  font-family: var(--font-heading);
-  color: var(--color-orange);
-  font-size: 34px;
-  font-weight: 800;
-}
-
-.plan-price span {
-  font-size: 14px;
-  color: var(--color-mid);
-}
-
-.section-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 22px;
-}
-
-.period-toggle {
-  display: flex;
-  gap: 6px;
-  padding: 4px;
-  border-radius: var(--radius-md);
-  background: rgba(232, 230, 220, 0.05);
-}
-
-.period-toggle button {
-  padding: 8px 18px;
-  border: none;
-  border-radius: calc(var(--radius-md) - 2px);
-  background: transparent;
-  color: var(--color-mid);
-  cursor: pointer;
-  font-family: var(--font-heading);
-  font-weight: 700;
-}
-
-.period-toggle button.active {
-  background: rgba(106, 155, 204, 0.18);
-  color: var(--color-blue);
-}
-
-.plan-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 18px;
-}
-
-.plan-card {
-  padding: 24px;
-  border: 1px solid rgba(232, 230, 220, 0.1);
-  border-radius: var(--radius-lg);
-  background: rgba(232, 230, 220, 0.04);
-}
-
-.plan-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 18px;
-}
-
-.plan-top h3 {
-  margin: 0;
-  color: var(--color-light);
-}
-
-.recommend-tag {
-  padding: 4px 8px;
-  border-radius: 14px;
-  background: rgba(120, 140, 93, 0.16);
-  color: var(--color-green);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.quota-line {
-  margin: 14px 0;
-  color: var(--color-light);
-  font-family: var(--font-heading);
-  font-weight: 700;
-}
-
-.plan-rules {
-  list-style: none;
-  padding: 0;
-  margin: 0 0 22px;
-  display: grid;
-  gap: 8px;
-  color: var(--color-mid);
-  font-size: 14px;
-}
-
-.btn-primary,
-.btn-secondary,
-.btn-ghost {
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  padding: 11px 18px;
-  font-family: var(--font-heading);
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.btn-primary {
-  background: var(--color-orange);
-  color: var(--color-dark);
-}
-
-.btn-secondary {
-  width: 100%;
-  background: rgba(106, 155, 204, 0.14);
-  border-color: rgba(106, 155, 204, 0.26);
-  color: var(--color-blue);
-}
-
-.btn-ghost {
-  background: transparent;
-  border-color: rgba(232, 230, 220, 0.14);
-  color: var(--color-mid);
-}
-
-button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.rules-section {
-  margin-top: 48px;
-  padding-top: 30px;
-  border-top: 1px solid rgba(232, 230, 220, 0.08);
-}
-
-.rule-table {
-  min-width: 260px;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 10px 26px;
-  color: var(--color-mid);
-}
-
-.rule-table strong {
-  color: var(--color-light);
+  font-weight: 850;
 }
 
 .modal-overlay {
   position: fixed;
   inset: 0;
   z-index: 1000;
-  background: rgba(20, 20, 19, 0.72);
+  padding: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  background: rgba(23, 23, 23, 0.38);
+  backdrop-filter: blur(10px);
 }
 
 .modal-card {
-  width: min(420px, 100%);
-  padding: 30px;
-  border-radius: var(--radius-lg);
-  background: var(--color-dark);
-  border: 1px solid rgba(232, 230, 220, 0.12);
+  width: min(430px, 100%);
+  padding: 28px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-xl);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow-lg);
 }
 
 .modal-card h3 {
   margin: 0 0 22px;
-  color: var(--color-light);
 }
 
 .order-info {
@@ -564,40 +577,66 @@ button:disabled {
 }
 
 .order-info span {
-  color: var(--color-mid);
+  color: var(--color-muted);
 }
 
 .order-info strong {
-  color: var(--color-light);
+  color: var(--color-ink);
   text-align: right;
   word-break: break-all;
 }
 
-@media (max-width: 820px) {
-  .plans-header,
-  .trial-band,
-  .rules-section {
-    align-items: stretch;
-    flex-direction: column;
-  }
+.btn-ghost,
+.btn-pay {
+  min-height: 42px;
+  padding: 0 18px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-weight: 850;
+}
 
-  .balance-strip,
-  .trial-action {
-    justify-content: space-between;
-  }
+.btn-ghost {
+  border: 1px solid var(--color-line-strong);
+  background: transparent;
+  color: var(--color-muted);
+}
 
-  .plan-grid {
+@media (max-width: 1100px) {
+  .plans-hero,
+  .workflow-section {
     grid-template-columns: 1fr;
   }
 
+  .plan-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .plans-shell {
+    padding: 28px 14px 96px;
+  }
+
+  .balance-cards,
+  .plan-grid,
   .workflow-grid {
     grid-template-columns: 1fr;
   }
 
-  .section-head {
-    align-items: flex-start;
+  .billing-toggle {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .plan-card {
+    min-height: auto;
+  }
+
+  .modal-actions {
+    align-items: stretch;
     flex-direction: column;
-    gap: 14px;
   }
 }
 </style>

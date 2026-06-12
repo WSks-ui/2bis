@@ -1,44 +1,110 @@
 <template>
-  <div class="history-page">
+  <div class="history-page paper-page">
     <NavBar />
 
-    <main class="page-container">
-      <header class="page-header">
-        <h1>生成历史</h1>
-        <p>查看已完成的创作记录、消费额度和扣费来源。</p>
-      </header>
+    <main class="history-shell">
+      <aside class="filter-panel surface-card">
+        <div class="filter-head">
+          <h2>筛选</h2>
+          <button type="button" @click="resetFilters">清空</button>
+        </div>
 
-      <div v-if="loading" class="state-area">加载中...</div>
+        <label>
+          时间范围
+          <select v-model="filters.range">
+            <option value="all">全部时间</option>
+            <option value="today">今天</option>
+            <option value="week">最近 7 天</option>
+            <option value="month">最近 30 天</option>
+          </select>
+        </label>
 
-      <div v-else-if="!records.length" class="state-area">
-        <p>暂无生成记录</p>
-        <router-link to="/" class="btn-primary">开始创作</router-link>
-      </div>
+        <label>
+          工作流
+          <select v-model="filters.workflow">
+            <option value="all">全部</option>
+            <option value="standard">标准生成</option>
+            <option value="professional">专业工作流</option>
+          </select>
+        </label>
 
-      <section v-else class="history-grid">
-        <article v-for="record in records" :key="record.id" class="history-card">
-          <button class="thumb-button" @click="openPreview(record)">
-            <img :src="record.image_url" :alt="record.prompt" loading="lazy" />
-            <span :class="['quality-tag', `quality-${record.quality}`]">
-              {{ qualityLabel(record.quality) }}
-            </span>
-          </button>
-          <div class="card-info">
-            <p class="prompt-text">{{ record.prompt }}</p>
-            <div class="meta-row">
-              <span>{{ record.points_cost }} 额度</span>
-              <span>{{ sourceLabel(record.balance_source) }}</span>
-              <span v-if="record.workflow_type && record.workflow_type !== 'standard'">
-                {{ workflowLabel(record.workflow_type) }}
-              </span>
-              <span>{{ formatTime(record.created_at) }}</span>
+        <label>
+          质量
+          <select v-model="filters.quality">
+            <option value="all">全部</option>
+            <option value="low">低质量</option>
+            <option value="medium">中质量</option>
+            <option value="high">高质量</option>
+          </select>
+        </label>
+
+        <label>
+          扣费来源
+          <select v-model="filters.source">
+            <option value="all">全部</option>
+            <option value="free_points">体验积分</option>
+            <option value="quota">订阅额度</option>
+            <option value="points">普通积分</option>
+          </select>
+        </label>
+
+        <button class="export-button" type="button" @click="exportHistory">导出记录</button>
+      </aside>
+
+      <section class="history-main">
+        <header class="history-hero">
+          <div>
+            <p class="eyebrow">Generation History</p>
+            <h1>历史记录</h1>
+            <p>查看生成结果、扣费来源与工作流信息。失败任务不进入历史，生成页任务日志会显示退款状态。</p>
+          </div>
+          <div class="history-stats surface-card">
+            <div>
+              <span>记录</span>
+              <strong>{{ filteredRecords.length }}</strong>
             </div>
-            <div class="card-actions">
-              <button class="btn-ghost" @click="downloadImage(record)">下载</button>
-              <button class="btn-danger" @click="confirmDelete(record)">删除</button>
+            <div>
+              <span>订阅额度</span>
+              <strong>{{ quotaCostTotal }}</strong>
+            </div>
+            <div>
+              <span>体验积分</span>
+              <strong>{{ freePointCostTotal }}</strong>
             </div>
           </div>
-        </article>
+        </header>
+
+        <div v-if="loading" class="state-area surface-card">加载中...</div>
+
+        <div v-else-if="!filteredRecords.length" class="state-area surface-card">
+          <p>暂无匹配记录</p>
+          <router-link to="/" class="btn-black start-link">开始创作</router-link>
+        </div>
+
+        <section v-else class="history-table surface-card">
+          <article v-for="record in filteredRecords" :key="record.id" class="history-row">
+            <button class="thumb-button" @click="openPreview(record)">
+              <img :src="record.image_url" :alt="record.prompt" loading="lazy" />
+            </button>
+
+            <div class="record-prompt">
+              <p>{{ record.prompt }}</p>
+              <div class="record-tags">
+                <span>{{ qualityLabel(record.quality) }}</span>
+                <span>{{ workflowLabel(record.workflow_type) }}</span>
+                <span>{{ sourceLabel(record.balance_source) }}</span>
+              </div>
+            </div>
+
+            <span class="cost-cell">{{ record.points_cost }} 额度</span>
+            <span class="time-cell">{{ formatTime(record.created_at) }}</span>
+            <div class="row-actions">
+              <button @click="openPreview(record)">查看</button>
+              <button @click="downloadImage(record)">下载</button>
+              <button class="danger" @click="confirmDelete(record)">删除</button>
+            </div>
+          </article>
+        </section>
       </section>
     </main>
 
@@ -48,13 +114,11 @@
         <img :src="previewRecord.image_url" :alt="previewRecord.prompt" />
         <div class="preview-info">
           <p>{{ previewRecord.prompt }}</p>
-          <div class="meta-row">
+          <div class="record-tags">
             <span>{{ qualityLabel(previewRecord.quality) }}</span>
             <span>{{ previewRecord.points_cost }} 额度</span>
             <span>{{ sourceLabel(previewRecord.balance_source) }}</span>
-            <span v-if="previewRecord.workflow_type && previewRecord.workflow_type !== 'standard'">
-              {{ workflowLabel(previewRecord.workflow_type) }}
-            </span>
+            <span>{{ workflowLabel(previewRecord.workflow_type) }}</span>
             <span>{{ formatTime(previewRecord.created_at) }}</span>
           </div>
         </div>
@@ -77,7 +141,8 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { ElMessage } from 'element-plus'
 import api from '../api'
 import NavBar from '../components/NavBar.vue'
 
@@ -86,6 +151,34 @@ const loading = ref(true)
 const previewRecord = ref(null)
 const deleteTarget = ref(null)
 const deleting = ref(false)
+
+const filters = reactive({
+  range: 'all',
+  workflow: 'all',
+  quality: 'all',
+  source: 'all'
+})
+
+const filteredRecords = computed(() => {
+  return records.value.filter((record) => {
+    if (filters.workflow !== 'all' && (record.workflow_type || 'standard') !== filters.workflow) return false
+    if (filters.quality !== 'all' && record.quality !== filters.quality) return false
+    if (filters.source !== 'all' && record.balance_source !== filters.source) return false
+    return isInRange(record.created_at, filters.range)
+  })
+})
+
+const quotaCostTotal = computed(() => {
+  return filteredRecords.value
+    .filter((record) => record.balance_source === 'quota')
+    .reduce((total, record) => total + (record.points_cost || 0), 0)
+})
+
+const freePointCostTotal = computed(() => {
+  return filteredRecords.value
+    .filter((record) => record.balance_source === 'free_points')
+    .reduce((total, record) => total + (record.points_cost || 0), 0)
+})
 
 onMounted(() => {
   fetchHistory()
@@ -97,10 +190,30 @@ async function fetchHistory() {
     const res = await api.get('/history')
     records.value = Array.isArray(res.data) ? res.data : (res.data.records || [])
   } catch (e) {
-    console.error('Failed to fetch history', e)
+    records.value = []
+    ElMessage.error(e.response?.data?.detail || '历史记录加载失败')
   } finally {
     loading.value = false
   }
+}
+
+function resetFilters() {
+  filters.range = 'all'
+  filters.workflow = 'all'
+  filters.quality = 'all'
+  filters.source = 'all'
+}
+
+function isInRange(timeStr, range) {
+  if (range === 'all') return true
+  const timestamp = new Date(timeStr).getTime()
+  if (Number.isNaN(timestamp)) return false
+  const now = Date.now()
+  const day = 24 * 60 * 60 * 1000
+  if (range === 'today') return new Date(timeStr).toDateString() === new Date().toDateString()
+  if (range === 'week') return now - timestamp <= 7 * day
+  if (range === 'month') return now - timestamp <= 30 * day
+  return true
 }
 
 function openPreview(record) {
@@ -128,7 +241,7 @@ async function doDelete() {
     if (previewRecord.value?.id === deleteTarget.value.id) closePreview()
     deleteTarget.value = null
   } catch (e) {
-    console.error('Failed to delete history', e)
+    ElMessage.error(e.response?.data?.detail || '删除失败，请稍后重试')
   } finally {
     deleting.value = false
   }
@@ -145,6 +258,32 @@ function downloadImage(record) {
   document.body.removeChild(a)
 }
 
+function exportHistory() {
+  if (!filteredRecords.value.length) {
+    ElMessage.info('当前没有可导出的记录')
+    return
+  }
+  const content = filteredRecords.value.map((record) => ({
+    id: record.id,
+    prompt: record.prompt,
+    quality: qualityLabel(record.quality),
+    workflow: workflowLabel(record.workflow_type),
+    source: sourceLabel(record.balance_source),
+    cost: record.points_cost,
+    created_at: record.created_at
+  }))
+  const blob = new Blob([JSON.stringify(content, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = '2bis-history.json'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+  ElMessage.success('已导出当前筛选记录')
+}
+
 function qualityLabel(quality) {
   const map = { low: '低质量', medium: '中质量', high: '高质量' }
   return map[quality] || quality
@@ -156,8 +295,8 @@ function sourceLabel(source) {
 }
 
 function workflowLabel(type) {
-  const map = { professional: '专业工作流' }
-  return map[type] || type
+  const map = { standard: '标准生成', professional: '专业工作流' }
+  return map[type || 'standard'] || type
 }
 
 function formatTime(timeStr) {
@@ -173,60 +312,185 @@ function formatTime(timeStr) {
 </script>
 
 <style scoped>
-.history-page {
-  min-height: 100vh;
-  background: var(--color-dark);
-}
-
-.page-container {
-  max-width: 1120px;
+.history-shell {
+  max-width: 1360px;
   margin: 0 auto;
-  padding: 48px 24px 80px;
-}
-
-.page-header {
-  margin-bottom: 32px;
-}
-
-.page-header h1 {
-  margin: 0;
-  color: var(--color-light);
-  font-family: var(--font-heading);
-  font-size: 34px;
-}
-
-.page-header p,
-.state-area,
-.prompt-text,
-.meta-row,
-.confirm-box p {
-  color: var(--color-mid);
-}
-
-.history-grid {
+  padding: 34px 28px 100px;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 210px minmax(0, 1fr);
+  gap: 28px;
+}
+
+.filter-panel {
+  position: sticky;
+  top: 92px;
+  align-self: start;
+  padding: 22px;
+  display: grid;
   gap: 18px;
 }
 
-.history-card,
-.confirm-box,
-.preview-modal {
-  border: 1px solid rgba(232, 230, 220, 0.1);
-  border-radius: var(--radius-lg);
-  background: rgba(232, 230, 220, 0.04);
+.filter-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.filter-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.filter-head button,
+.export-button,
+.row-actions button,
+.btn-ghost,
+.btn-danger {
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--color-muted);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.filter-head button {
+  min-height: 30px;
+  padding: 0 10px;
+}
+
+.filter-panel label {
+  display: grid;
+  gap: 8px;
+  color: var(--color-muted);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.filter-panel select {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--color-ink);
+  outline: none;
+}
+
+.export-button {
+  min-height: 38px;
+}
+
+.history-main {
+  min-width: 0;
+}
+
+.history-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: end;
+  margin-bottom: 22px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: var(--color-muted);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.history-hero h1 {
+  margin: 0;
+  font-size: clamp(34px, 5vw, 54px);
+  letter-spacing: -0.06em;
+}
+
+.history-hero p {
+  max-width: 620px;
+  margin: 10px 0 0;
+  color: var(--color-muted);
+}
+
+.history-stats {
+  min-width: 330px;
+  padding: 17px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.history-stats div {
+  display: grid;
+  gap: 5px;
+}
+
+.history-stats span {
+  color: var(--color-muted);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.history-stats strong {
+  color: var(--color-ink);
+  font-family: var(--font-heading);
+  font-size: 24px;
+}
+
+.state-area {
+  min-height: 300px;
+  display: grid;
+  place-items: center;
+  gap: 14px;
+  color: var(--color-muted);
+  text-align: center;
+}
+
+.start-link {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 20px;
+  font-family: var(--font-ui);
+  font-weight: 850;
+}
+
+.history-table {
+  overflow: hidden;
+}
+
+.history-row {
+  min-height: 88px;
+  padding: 13px 16px;
+  display: grid;
+  grid-template-columns: 74px minmax(220px, 1fr) 86px 142px 160px;
+  gap: 16px;
+  align-items: center;
+  border-bottom: 1px solid rgba(226, 229, 223, 0.76);
+}
+
+.history-row:last-child {
+  border-bottom: 0;
 }
 
 .thumb-button {
-  position: relative;
-  display: block;
-  width: 100%;
-  aspect-ratio: 16 / 9;
+  width: 68px;
+  height: 68px;
   padding: 0;
-  border: 0;
-  background: rgba(0, 0, 0, 0.25);
-  cursor: pointer;
   overflow: hidden;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  background: var(--color-paper-soft);
+  cursor: pointer;
 }
 
 .thumb-button img {
@@ -236,82 +500,58 @@ function formatTime(timeStr) {
   display: block;
 }
 
-.quality-tag {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  padding: 4px 10px;
-  border-radius: 16px;
-  background: rgba(20, 20, 19, 0.72);
-  color: var(--color-light);
-  font-size: 12px;
-  font-weight: 700;
+.record-prompt {
+  min-width: 0;
 }
 
-.card-info {
-  padding: 18px;
-}
-
-.prompt-text {
-  min-height: 44px;
-  line-height: 1.6;
-  margin: 0 0 14px;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+.record-prompt p {
+  margin: 0 0 9px;
   overflow: hidden;
+  color: var(--color-ink);
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
 }
 
-.meta-row {
+.record-tags {
   display: flex;
-  gap: 10px;
   flex-wrap: wrap;
-  align-items: center;
+  gap: 7px;
+}
+
+.record-tags span {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--color-paper-soft);
+  color: var(--color-muted);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.cost-cell,
+.time-cell {
+  color: var(--color-muted);
+  font-family: var(--font-ui);
   font-size: 12px;
-  font-family: var(--font-heading);
+  font-weight: 760;
 }
 
-.card-actions,
-.confirm-actions {
+.row-actions {
   display: flex;
-  gap: 10px;
-  margin-top: 16px;
+  justify-content: flex-end;
+  gap: 7px;
 }
 
-.btn-primary,
-.btn-ghost,
+.row-actions button {
+  min-height: 32px;
+  padding: 0 9px;
+}
+
+.row-actions .danger,
 .btn-danger {
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  padding: 9px 16px;
-  cursor: pointer;
-  font-family: var(--font-heading);
-  font-weight: 700;
-  text-decoration: none;
-}
-
-.btn-primary {
-  background: var(--color-orange);
-  color: var(--color-dark);
-}
-
-.btn-ghost {
-  background: transparent;
-  border-color: rgba(232, 230, 220, 0.14);
-  color: var(--color-mid);
-}
-
-.btn-danger {
-  background: rgba(217, 87, 87, 0.12);
-  border-color: rgba(217, 87, 87, 0.28);
-  color: #f06a6a;
-}
-
-.state-area {
-  min-height: 260px;
-  display: grid;
-  place-items: center;
-  text-align: center;
+  color: var(--color-red);
+  border-color: rgba(200, 77, 60, 0.2);
 }
 
 .preview-overlay,
@@ -323,12 +563,21 @@ function formatTime(timeStr) {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(10, 10, 9, 0.86);
+  background: rgba(23, 23, 23, 0.46);
+  backdrop-filter: blur(10px);
+}
+
+.preview-modal,
+.confirm-box {
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-xl);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow-lg);
 }
 
 .preview-modal {
   position: relative;
-  max-width: min(980px, 94vw);
+  max-width: min(1040px, 94vw);
   max-height: 92vh;
   overflow: hidden;
 }
@@ -338,21 +587,22 @@ function formatTime(timeStr) {
   max-height: 70vh;
   display: block;
   object-fit: contain;
-  background: #000;
+  background: #111;
 }
 
 .preview-close {
   position: absolute;
   top: 12px;
   right: 12px;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.58);
   border-radius: 50%;
-  border: 1px solid rgba(232, 230, 220, 0.22);
-  background: rgba(20, 20, 19, 0.7);
-  color: var(--color-light);
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--color-ink);
   cursor: pointer;
   font-size: 22px;
+  backdrop-filter: blur(10px);
 }
 
 .preview-info,
@@ -360,18 +610,109 @@ function formatTime(timeStr) {
   padding: 20px;
 }
 
+.preview-info p,
+.confirm-box p {
+  margin: 0 0 12px;
+  color: var(--color-muted);
+}
+
 .confirm-box {
-  width: min(380px, 100%);
+  width: min(390px, 100%);
 }
 
 .confirm-box h3 {
-  color: var(--color-light);
   margin: 0 0 10px;
 }
 
-@media (max-width: 720px) {
-  .history-grid {
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.btn-ghost,
+.btn-danger {
+  min-height: 38px;
+  padding: 0 14px;
+}
+
+@media (max-width: 1080px) {
+  .history-shell {
     grid-template-columns: 1fr;
+  }
+
+  .filter-panel {
+    position: static;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    align-items: end;
+  }
+
+  .filter-head {
+    grid-column: span 5;
+  }
+
+  .history-hero {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .history-stats {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 780px) {
+  .history-shell {
+    padding: 24px 14px 96px;
+  }
+
+  .filter-panel {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .filter-head {
+    grid-column: span 2;
+  }
+
+  .history-row {
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .cost-cell,
+  .time-cell {
+    display: none;
+  }
+
+  .row-actions {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 520px) {
+  .filter-panel,
+  .history-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-head {
+    grid-column: auto;
+  }
+
+  .history-row {
+    grid-template-columns: 1fr;
+  }
+
+  .thumb-button {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 9;
+  }
+
+  .row-actions {
+    grid-column: auto;
   }
 }
 </style>

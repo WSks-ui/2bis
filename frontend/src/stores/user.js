@@ -13,6 +13,9 @@ export const useUserStore = defineStore('user', () => {
   const subscriptionPlan = ref(null)
   const subscriptionPeriod = ref(null)
   const subscriptionExpireAt = ref(null)
+  const loading = ref(false)
+  const lastError = ref('')
+  let userInfoRequest = null
 
   const isLoggedIn = computed(() => !!token.value)
 
@@ -24,7 +27,7 @@ export const useUserStore = defineStore('user', () => {
     token.value = res.data.access_token
     localStorage.setItem('token', res.data.access_token)
     username.value = loginUsername
-    await fetchUserInfo()
+    await refreshUserInfoQuietly()
   }
 
   async function register(registerUsername, password) {
@@ -48,21 +51,38 @@ export const useUserStore = defineStore('user', () => {
   }
 
   async function fetchUserInfo() {
-    try {
-      const res = await api.get('/points/balance')
-      const data = res.data
-      username.value = data.username || username.value
-      isMember.value = data.is_member || false
-      memberExpireAt.value = data.member_expire_at || null
-      subscriptionPlan.value = data.subscription_plan || null
-      subscriptionPeriod.value = data.subscription_period || null
-      subscriptionExpireAt.value = data.subscription_expire_at || data.member_expire_at || null
+    if (userInfoRequest) return userInfoRequest
+    loading.value = true
+    lastError.value = ''
+    userInfoRequest = api.get('/points/balance')
+      .then((res) => {
+        const data = res.data
+        username.value = data.username || username.value
+        isMember.value = data.is_member || false
+        memberExpireAt.value = data.member_expire_at || null
+        subscriptionPlan.value = data.subscription_plan || null
+        subscriptionPeriod.value = data.subscription_period || null
+        subscriptionExpireAt.value = data.subscription_expire_at || data.member_expire_at || null
 
-      const pointsStore = usePointsStore()
-      pointsStore.applyBalance(data)
-    } catch (e) {
-      console.error('Failed to fetch user info', e)
-    }
+        const pointsStore = usePointsStore()
+        pointsStore.applyBalance(data)
+        return data
+      })
+      .catch((e) => {
+        lastError.value = e.response?.data?.detail || '用户信息刷新失败'
+        throw e
+      })
+      .finally(() => {
+        loading.value = false
+        userInfoRequest = null
+      })
+    return userInfoRequest
+  }
+
+  async function refreshUserInfoQuietly() {
+    try {
+      await fetchUserInfo()
+    } catch (_) {}
   }
 
   return {
@@ -73,10 +93,13 @@ export const useUserStore = defineStore('user', () => {
     subscriptionPlan,
     subscriptionPeriod,
     subscriptionExpireAt,
+    loading,
+    lastError,
     isLoggedIn,
     login,
     register,
     logout,
-    fetchUserInfo
+    fetchUserInfo,
+    refreshUserInfoQuietly
   }
 })

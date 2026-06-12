@@ -3,8 +3,9 @@ export const IMAGE_SIZE_GROUPS = [
     ratio: '21:9',
     name: '超宽银幕',
     sizes: [
-      { label: '超宽高清', value: '4032x1728' },
+      { label: '影院高清', value: '3584x1536' },
       { label: '超宽标准', value: '2688x1152' },
+      { label: '超宽轻量', value: '1792x768' },
     ],
   },
   {
@@ -12,8 +13,9 @@ export const IMAGE_SIZE_GROUPS = [
     name: '横版宽屏',
     sizes: [
       { label: '4K 宽屏', value: '3840x2160' },
-      { label: '平台高清', value: '2688x1536' },
-      { label: '平台标准', value: '1344x768' },
+      { label: '高清宽屏', value: '2560x1440' },
+      { label: '标准宽屏', value: '1920x1080' },
+      { label: '轻量宽屏', value: '1344x768' },
     ],
   },
   {
@@ -22,6 +24,7 @@ export const IMAGE_SIZE_GROUPS = [
     sizes: [
       { label: '高清横幅', value: '3456x2304' },
       { label: '标准横幅', value: '2304x1536' },
+      { label: '轻量横幅', value: '1728x1152' },
     ],
   },
   {
@@ -29,7 +32,6 @@ export const IMAGE_SIZE_GROUPS = [
     name: '经典横图',
     sizes: [
       { label: '高清横图', value: '3072x2304' },
-      { label: '平台横图', value: '2304x1792' },
       { label: '标准横图', value: '2048x1536' },
       { label: '轻量横图', value: '1536x1152' },
       { label: '平台轻量', value: '1152x896' },
@@ -40,7 +42,8 @@ export const IMAGE_SIZE_GROUPS = [
     name: '方图',
     sizes: [
       { label: '高清方图', value: '2048x2048' },
-      { label: '标准方图', value: '1024x1024' },
+      { label: '标准方图', value: '1536x1536' },
+      { label: '轻量方图', value: '1024x1024' },
     ],
   },
   {
@@ -60,6 +63,7 @@ export const IMAGE_SIZE_GROUPS = [
     sizes: [
       { label: '高清海报', value: '2304x3456' },
       { label: '标准海报', value: '1536x2304' },
+      { label: '轻量海报', value: '1152x1728' },
     ],
   },
   {
@@ -67,8 +71,9 @@ export const IMAGE_SIZE_GROUPS = [
     name: '移动竖屏',
     sizes: [
       { label: '4K 竖屏', value: '2160x3840' },
-      { label: '平台高清', value: '1440x2560' },
-      { label: '平台标准', value: '720x1280' },
+      { label: '高清竖屏', value: '1440x2560' },
+      { label: '标准竖屏', value: '1080x1920' },
+      { label: '轻量竖屏', value: '720x1280' },
     ],
   },
 ]

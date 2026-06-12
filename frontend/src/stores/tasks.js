@@ -27,9 +27,18 @@ export const useTasksStore = defineStore('tasks', () => {
       workflowType: data.workflow_type || 'standard',
       workflowCost: data.workflow_cost || data.points_cost || 0,
       workflowPreset: data.workflow_preset || '',
+      upstreamModel: data.upstream_model || '',
+      upstreamEndpoint: data.upstream_endpoint || '',
+      upstreamRequestQuality: data.upstream_request_quality || '',
+      upstreamRequestSize: data.upstream_request_size || '',
+      upstreamResponseFormat: data.upstream_response_format || '',
+      upstreamRequestId: data.upstream_request_id || '',
+      upstreamElapsedSeconds: data.upstream_elapsed_seconds ?? null,
       createdAt: data.created_at || local.createdAt || new Date().toISOString(),
       startedAt: data.started_at || null,
       finishedAt: data.finished_at || null,
+      lastPolledAt: new Date().toISOString(),
+      pollError: '',
     }
   }
 
@@ -77,7 +86,16 @@ export const useTasksStore = defineStore('tasks', () => {
       workflowType,
       workflowCost: 0,
       workflowPreset,
+      upstreamModel: '',
+      upstreamEndpoint: '',
+      upstreamRequestQuality: '',
+      upstreamRequestSize: '',
+      upstreamResponseFormat: '',
+      upstreamRequestId: '',
+      upstreamElapsedSeconds: null,
       createdAt: new Date().toISOString(),
+      lastPolledAt: null,
+      pollError: '',
     }
     tasks.value.push(local)
 
@@ -149,13 +167,21 @@ export const useTasksStore = defineStore('tasks', () => {
   }
 
   async function fetchTask(id) {
-    const res = await api.get(`/generate/tasks/${id}`)
-    const current = tasks.value.find((t) => t.id === id)
-    const task = normalizeTask(res.data, current || {})
-    upsertTask(task)
-    if (!isActive(task)) {
-      stopPolling(id)
-      await refreshBalance()
+    try {
+      const res = await api.get(`/generate/tasks/${id}`)
+      const current = tasks.value.find((t) => t.id === id)
+      const task = normalizeTask(res.data, current || {})
+      upsertTask(task)
+      if (!isActive(task)) {
+        stopPolling(id)
+        await refreshBalance()
+      }
+    } catch (e) {
+      const task = tasks.value.find((t) => t.id === id)
+      if (task) {
+        task.pollError = e.response?.data?.detail || e.message || '状态刷新失败'
+      }
+      throw e
     }
   }
 

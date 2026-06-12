@@ -19,7 +19,9 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response && error.response.status === 401) {
+    const requestUrl = error.config?.url || ''
+    const isAuthLogin = requestUrl.includes('/auth/login')
+    if (error.response && error.response.status === 401 && !isAuthLogin) {
       localStorage.removeItem('token')
       ElMessage.error('登录已过期，请重新登录')
       window.location.href = '/login'

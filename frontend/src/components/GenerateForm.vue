@@ -166,7 +166,7 @@ async function submit() {
       })
     }
     imageUrl.value = res.data.image_url || ''
-    await pointsStore.fetchBalance()
+    await pointsStore.refreshBalanceQuietly()
     ElMessage.success('任务已提交')
   } catch (e) {
     ElMessage.error(e.response?.data?.detail || '提交失败')
