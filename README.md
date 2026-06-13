@@ -69,6 +69,7 @@ copy .env.example .env
 
 ```env
 SECRET_KEY=change-me
+ADMIN_USERNAMES=your-admin-username
 AI_API_URL=https://www.aiartmirror.com/v1
 AI_API_KEY=your-api-key-here
 REDIS_URL=redis://localhost:6379/0
@@ -272,10 +273,15 @@ alembic upgrade head
 | --- | --- | --- |
 | `DATABASE_URL` | `sqlite+aiosqlite:///./aigen.db` | 数据库连接 |
 | `SECRET_KEY` | `dev-secret-key-change-in-production` | JWT 签名密钥 |
+| `ADMIN_USERNAMES` | 空 | 逗号分隔的管理员用户名，用于启用管理员控制台 |
+| `API_KEY_ENCRYPTION_SECRET` | 空 | API Key 数据库加密密钥；生产环境应单独配置，避免 SECRET_KEY 轮换影响解密 |
+| `API_KEY_CONFIG_CACHE_SECONDS` | `5` | 后台切换 API Key 后的运行时配置缓存秒数 |
 | `AI_API_URL` | `https://www.aiartmirror.com/v1` | 图片 API 地址 |
 | `AI_API_KEY` | 空 | 图片 API Key |
 | `AI_TIMEOUT` | `2400` | AI 请求超时秒数 |
-| `AI_IMAGE_RESPONSE_FORMAT` | 空 | 可选图片 API 返回格式；当前平台不支持 `response_format`，保持为空 |
+| `AI_RESPONSE_BODY_TIMEOUT` | `900` | 上游返回 200 后接收响应体的保护超时；当前上游返回大体积 base64，高质量大图可能需要较长接收时间 |
+| `AI_IMAGE_RESPONSE_FORMAT` | 空 | 可选图片 API 返回格式；当前上游不支持 `response_format`，保持为空，只有更换支持 URL 返回的接口时才设为 `url` |
+| `AI_RESPONSE_FORMAT_FALLBACK` | `false` | 是否在上游拒绝 `response_format` 后自动移除参数重试；默认关闭，避免静默回到大体积 base64 响应 |
 | `AI_MAX_CONCURRENT` | `4` | AI 客户端并发限制 |
 | `AI_MIN_REQUEST_INTERVAL_SECONDS` | `0.3` | AI 请求最小发送间隔，用于避开上游分钟级限流 |
 | `AI_RATE_LIMIT_MAX_RETRIES` | `6` | 上游 429 限流后的最大重试次数 |
