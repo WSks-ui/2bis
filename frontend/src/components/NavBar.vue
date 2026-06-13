@@ -43,6 +43,7 @@
             </div>
             <router-link to="/plans" @click="userMenuOpen = false">管理订阅</router-link>
             <router-link to="/history" @click="userMenuOpen = false">查看历史</router-link>
+            <router-link v-if="userStore.isAdmin" to="/admin/api-keys" @click="userMenuOpen = false">API Key 控制台</router-link>
             <button type="button" class="logout-action" @click="logout">退出登录</button>
           </div>
         </div>
@@ -66,11 +67,12 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from '../services/toast'
 import { useUserStore } from '../stores/user'
 import { usePointsStore } from '../stores/points'
 import PointsDisplay from './PointsDisplay.vue'
 import api from '../api'
+import { warmPlansConfig } from '../services/plansCache'
 
 const userStore = useUserStore()
 const pointsStore = usePointsStore()
@@ -95,12 +97,11 @@ const avatarText = computed(() => {
 
 onMounted(async () => {
   window.addEventListener('click', closeUserMenu)
-  await userStore.refreshUserInfoQuietly()
-  try {
-    const res = await api.get('/auth/checkin/status')
-    checkinAvailable.value = res.data.checkin_available
-    checkinDay.value = res.data.consecutive_days
-  } catch (_) {}
+  warmPlansConfig()
+  await Promise.allSettled([
+    userStore.refreshUserInfoQuietly(),
+    refreshCheckinStatus()
+  ])
 })
 
 onBeforeUnmount(() => {
@@ -138,6 +139,14 @@ function toggleUserMenu() {
 
 function closeUserMenu() {
   userMenuOpen.value = false
+}
+
+async function refreshCheckinStatus() {
+  try {
+    const res = await api.get('/auth/checkin/status')
+    checkinAvailable.value = res.data.checkin_available
+    checkinDay.value = res.data.consecutive_days
+  } catch (_) {}
 }
 
 function logout() {

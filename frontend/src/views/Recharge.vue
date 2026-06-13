@@ -1,7 +1,5 @@
 <template>
   <div class="plans-page paper-page">
-    <NavBar />
-
     <main class="plans-shell">
       <section class="plans-hero">
         <div>
@@ -127,11 +125,13 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from '../services/toast'
 import api from '../api'
-import NavBar from '../components/NavBar.vue'
 import { usePointsStore } from '../stores/points'
 import { useUserStore } from '../stores/user'
+import { fetchPlansConfig, readCachedPlans } from '../services/plansCache'
+
+defineOptions({ name: 'Recharge' })
 
 const pointsStore = usePointsStore()
 const userStore = useUserStore()
@@ -173,23 +173,28 @@ const yearlySaving = computed(() => {
   return Math.max(0, Math.round((1 - creator.yearly_price / (creator.monthly_price * 12)) * 100))
 })
 
-onMounted(async () => {
-  await pointsStore.refreshBalanceQuietly()
-  await fetchPlans()
+onMounted(() => {
+  applyPlansConfig(readCachedPlans())
+  pointsStore.refreshBalanceQuietly()
+  fetchPlans()
 })
 
 async function fetchPlans() {
   try {
-    const res = await api.get('/points/plans')
-    trialPack.value = res.data.trial_pack || {}
-    subscriptionPlans.value = res.data.subscription_plans || fallbackPlans
-    workflowPresets.value = res.data.workflow_presets || fallbackWorkflows
+    applyPlansConfig(await fetchPlansConfig())
   } catch (_) {
     trialPack.value = { id: 1, name: '新手体验包', price: 5, quota: 30, duration_days: 7 }
     subscriptionPlans.value = fallbackPlans
     workflowPresets.value = fallbackWorkflows
     ElMessage.warning('计划信息加载失败，已显示默认配置')
   }
+}
+
+function applyPlansConfig(data) {
+  if (!data) return
+  trialPack.value = data.trial_pack || {}
+  subscriptionPlans.value = data.subscription_plans || fallbackPlans
+  workflowPresets.value = data.workflow_presets || fallbackWorkflows
 }
 
 function planPrice(plan) {

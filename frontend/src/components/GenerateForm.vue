@@ -8,7 +8,7 @@
 
     <div v-if="needImage" class="upload-box" @click="triggerUpload">
       <input ref="fileInput" type="file" accept="image/png,image/jpeg,image/webp" hidden @change="handleFileSelect" />
-      <img v-if="preview" :src="preview" alt="参考图" />
+      <img v-if="preview" :src="preview" alt="参考图" decoding="async" />
       <span>{{ preview ? '更换图片' : '上传图片' }}</span>
     </div>
 
@@ -53,7 +53,7 @@
     </div>
 
     <div v-if="imageUrl" class="result-area">
-      <img :src="imageUrl" alt="生成结果" />
+      <img :src="imageUrl" alt="生成结果" loading="lazy" decoding="async" />
       <button class="btn-download" @click="downloadImage">下载</button>
     </div>
   </section>
@@ -61,7 +61,7 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from '../services/toast'
 import api from '../api'
 import { IMAGE_SIZE_GROUPS, formatImageSize, imageMegapixels } from '../constants/imageSizes'
 import { usePointsStore } from '../stores/points'

@@ -1,7 +1,5 @@
 <template>
   <div class="home-page paper-page">
-    <NavBar />
-
     <main class="studio-shell">
       <aside class="tool-panel surface-card">
         <section class="panel-section">
@@ -102,7 +100,7 @@
           <div class="section-title">{{ imageInputTitle }}</div>
           <button class="upload-card" type="button" @click="triggerUpload">
             <input ref="fileInput" type="file" accept="image/png,image/jpeg,image/webp" hidden @change="handleFileSelect" />
-            <img v-if="refPreview" :src="refPreview" alt="参考图" />
+            <img v-if="refPreview" :src="refPreview" alt="参考图" decoding="async" />
             <span v-else class="upload-placeholder">{{ imageInputHint }}<br />支持 JPG / PNG / WebP</span>
             <strong>{{ imageInputAction }}</strong>
           </button>
@@ -201,13 +199,14 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
-import NavBar from '../components/NavBar.vue'
+import { computed, nextTick, onActivated, onMounted, ref } from 'vue'
+import { ElMessage } from '../services/toast'
 import TaskCard from '../components/TaskCard.vue'
-import api from '../api'
 import { IMAGE_SIZE_GROUPS, formatImageSize } from '../constants/imageSizes'
 import { useTasksStore } from '../stores/tasks'
+import { fetchPlansConfig, readCachedPlans } from '../services/plansCache'
+
+defineOptions({ name: 'Home' })
 
 const tasksStore = useTasksStore()
 
@@ -305,13 +304,15 @@ const placeholder = computed(() => {
   return '描述要如何编辑原图，例如替换背景、调整风格或修复细节。'
 })
 
-onMounted(async () => {
-  await fetchWorkflowOptions()
-  tasksStore.fetchTasks().catch(() => {})
+onMounted(() => {
+  applyPlansConfig(readCachedPlans())
+  fetchWorkflowOptions()
 })
 
-onBeforeUnmount(() => {
-  tasksStore.stopAllPolling()
+onActivated(() => {
+  tasksStore.fetchTasks().catch(() => {
+    tasksStore.resumePolling()
+  })
 })
 
 function switchMode(nextMode) {
@@ -325,9 +326,14 @@ function switchMode(nextMode) {
 
 async function fetchWorkflowOptions() {
   try {
-    const res = await api.get('/points/plans')
-    const presets = res.data?.workflow_presets
-    const generationOptions = res.data?.generation_options
+    applyPlansConfig(await fetchPlansConfig())
+  } catch (_) {}
+}
+
+function applyPlansConfig(data) {
+  if (!data) return
+  const presets = data.workflow_presets
+  const generationOptions = data.generation_options
     if (Array.isArray(presets) && presets.length) {
       workflowOptions.value = presets
       if (!presets.some((item) => item.workflow_type === selectedWorkflowType.value)) {
@@ -347,7 +353,6 @@ async function fetchWorkflowOptions() {
       sizeGroups.value = generationOptions.image_size_groups
       ensureValidSizeSelection()
     }
-  } catch (_) {}
 }
 
 function selectWorkflow(item) {
@@ -966,6 +971,24 @@ function handleSubmit() {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-generating {
+    animation: none;
+  }
+
+  .mode-button,
+  .choice-card,
+  .workflow-card,
+  .resolution-button,
+  .ratio-pill,
+  .upload-card,
+  .prompt-actions button,
+  .tune-button,
+  .block-head button {
+    transition: none;
+  }
 }
 
 .mode-button:hover,

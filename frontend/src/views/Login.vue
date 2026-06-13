@@ -62,7 +62,7 @@
 <script setup>
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from '../services/toast'
 import { useUserStore } from '../stores/user'
 
 const router = useRouter()
