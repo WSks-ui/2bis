@@ -1,9 +1,11 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import api from '../api'
-import { ElMessage } from 'element-plus'
-import router from '../router'
+import { ElMessage } from '../services/toast'
+import router, { preloadAdminApiKeysRoute, preloadHistoryRoute, preloadPlansRoute } from '../router'
 import { usePointsStore } from './points'
+import { clearHistoryCache, getDefaultHistoryParams, warmHistoryPage } from '../services/historyCache'
+import { warmPlansConfig } from '../services/plansCache'
 
 export const useUserStore = defineStore('user', () => {
   const username = ref('')
@@ -13,6 +15,7 @@ export const useUserStore = defineStore('user', () => {
   const subscriptionPlan = ref(null)
   const subscriptionPeriod = ref(null)
   const subscriptionExpireAt = ref(null)
+  const isAdmin = ref(false)
   const loading = ref(false)
   const lastError = ref('')
   let userInfoRequest = null
@@ -46,7 +49,9 @@ export const useUserStore = defineStore('user', () => {
     subscriptionPlan.value = null
     subscriptionPeriod.value = null
     subscriptionExpireAt.value = null
+    isAdmin.value = false
     localStorage.removeItem('token')
+    clearHistoryCache()
     router.push('/login')
   }
 
@@ -63,9 +68,11 @@ export const useUserStore = defineStore('user', () => {
         subscriptionPlan.value = data.subscription_plan || null
         subscriptionPeriod.value = data.subscription_period || null
         subscriptionExpireAt.value = data.subscription_expire_at || data.member_expire_at || null
+        isAdmin.value = Boolean(data.is_admin)
 
         const pointsStore = usePointsStore()
         pointsStore.applyBalance(data)
+        scheduleHistoryWarmup()
         return data
       })
       .catch((e) => {
@@ -85,6 +92,29 @@ export const useUserStore = defineStore('user', () => {
     } catch (_) {}
   }
 
+  async function warmHistoryFirstPage() {
+    await warmHistoryPage(getDefaultHistoryParams())
+  }
+
+  function scheduleHistoryWarmup() {
+    runWhenIdle(() => {
+      preloadHistoryRoute()
+      preloadPlansRoute()
+      warmPlansConfig()
+      if (isAdmin.value) preloadAdminApiKeysRoute()
+      warmHistoryFirstPage()
+    })
+  }
+
+  function runWhenIdle(callback) {
+    if (typeof window === 'undefined') return callback()
+    if ('requestIdleCallback' in window) {
+      window.requestIdleCallback(callback, { timeout: 1800 })
+      return
+    }
+    window.setTimeout(callback, 250)
+  }
+
   return {
     username,
     token,
@@ -93,6 +123,7 @@ export const useUserStore = defineStore('user', () => {
     subscriptionPlan,
     subscriptionPeriod,
     subscriptionExpireAt,
+    isAdmin,
     loading,
     lastError,
     isLoggedIn,

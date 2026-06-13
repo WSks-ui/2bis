@@ -1,7 +1,5 @@
 <template>
   <div class="history-page paper-page">
-    <NavBar />
-
     <main class="history-shell">
       <aside class="filter-panel surface-card">
         <div class="filter-head">
@@ -11,7 +9,7 @@
 
         <label>
           时间范围
-          <select v-model="filters.range">
+          <select v-model="filters.range" @change="applyFilters">
             <option value="all">全部时间</option>
             <option value="today">今天</option>
             <option value="week">最近 7 天</option>
@@ -21,7 +19,7 @@
 
         <label>
           工作流
-          <select v-model="filters.workflow">
+          <select v-model="filters.workflow" @change="applyFilters">
             <option value="all">全部</option>
             <option value="standard">标准生成</option>
             <option value="professional">专业工作流</option>
@@ -30,7 +28,7 @@
 
         <label>
           质量
-          <select v-model="filters.quality">
+          <select v-model="filters.quality" @change="applyFilters">
             <option value="all">全部</option>
             <option value="low">低质量</option>
             <option value="medium">中质量</option>
@@ -40,7 +38,7 @@
 
         <label>
           扣费来源
-          <select v-model="filters.source">
+          <select v-model="filters.source" @change="applyFilters">
             <option value="all">全部</option>
             <option value="free_points">体验积分</option>
             <option value="quota">订阅额度</option>
@@ -61,7 +59,7 @@
           <div class="history-stats surface-card">
             <div>
               <span>记录</span>
-              <strong>{{ filteredRecords.length }}</strong>
+              <strong>{{ totalRecords }}</strong>
             </div>
             <div>
               <span>订阅额度</span>
@@ -81,10 +79,10 @@
           <router-link to="/" class="btn-black start-link">开始创作</router-link>
         </div>
 
-        <section v-else class="history-table surface-card">
-          <article v-for="record in filteredRecords" :key="record.id" class="history-row">
+        <section v-else class="history-table surface-card" :class="{ 'is-page-loading': pageLoading }">
+          <article v-for="record in pagedRecords" :key="record.id" class="history-row">
             <button class="thumb-button" @click="openPreview(record)">
-              <img :src="record.image_url" :alt="record.prompt" loading="lazy" />
+              <img :src="record.thumbnail_url || record.image_url" :alt="record.prompt" loading="lazy" decoding="async" />
             </button>
 
             <div class="record-prompt">
@@ -105,13 +103,35 @@
             </div>
           </article>
         </section>
+
+        <nav v-if="totalPages > 1" class="pagination-bar" aria-label="历史分页">
+          <button type="button" :disabled="currentPage <= 1 || pageLoading" @click="goToPage(currentPage - 1)">‹</button>
+          <button
+            v-for="item in paginationItems"
+            :key="`${item.type}-${item.value}`"
+            type="button"
+            :class="{ active: item.value === currentPage, ellipsis: item.type === 'ellipsis' }"
+            :disabled="item.type === 'ellipsis' || pageLoading"
+            @click="item.type === 'page' && goToPage(item.value)"
+          >
+            {{ item.label }}
+          </button>
+          <button type="button" :disabled="currentPage >= totalPages || pageLoading" @click="goToPage(currentPage + 1)">›</button>
+        </nav>
       </section>
     </main>
 
     <div v-if="previewRecord" class="preview-overlay" @click.self="closePreview">
       <div class="preview-modal">
         <button class="preview-close" @click="closePreview">×</button>
-        <img :src="previewRecord.image_url" :alt="previewRecord.prompt" />
+        <div class="preview-image-frame">
+          <img
+            :src="previewImageUrl || previewRecord.thumbnail_url || previewRecord.image_url"
+            :alt="previewRecord.prompt"
+            decoding="async"
+          />
+          <span v-if="previewLoading" class="preview-loading">正在载入原图...</span>
+        </div>
         <div class="preview-info">
           <p>{{ previewRecord.prompt }}</p>
           <div class="record-tags">
@@ -142,15 +162,16 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from '../services/toast'
 import api from '../api'
-import NavBar from '../components/NavBar.vue'
+import { getCachedFullImageUrl, preloadThumbnails, removeCachedImage, warmFullImage } from '../services/imageCache'
+import {
+  fetchHistoryPage,
+  readCachedHistoryPage,
+  removeHistoryRecordFromCache
+} from '../services/historyCache'
 
-const records = ref([])
-const loading = ref(true)
-const previewRecord = ref(null)
-const deleteTarget = ref(null)
-const deleting = ref(false)
+defineOptions({ name: 'History' })
 
 const filters = reactive({
   range: 'all',
@@ -159,6 +180,30 @@ const filters = reactive({
   source: 'all'
 })
 
+const initialHistoryPage = readCachedHistoryPage({
+  page: 1,
+  page_size: 12,
+  range: filters.range,
+  workflow: filters.workflow,
+  quality: filters.quality,
+  source: filters.source
+})
+
+const records = ref(initialHistoryPage?.records || [])
+const loading = ref(!initialHistoryPage)
+const pageLoading = ref(false)
+const previewRecord = ref(null)
+const previewImageUrl = ref('')
+const previewLoading = ref(false)
+const deleteTarget = ref(null)
+const deleting = ref(false)
+const currentPage = ref(initialHistoryPage?.page || 1)
+const pageSize = ref(initialHistoryPage?.page_size || 12)
+const totalRecords = ref(initialHistoryPage?.total || 0)
+const totalPages = ref(initialHistoryPage?.total_pages || 1)
+let previewRequestId = 0
+let historyRequestId = 0
+
 const filteredRecords = computed(() => {
   return records.value.filter((record) => {
     if (filters.workflow !== 'all' && (record.workflow_type || 'standard') !== filters.workflow) return false
@@ -166,6 +211,34 @@ const filteredRecords = computed(() => {
     if (filters.source !== 'all' && record.balance_source !== filters.source) return false
     return isInRange(record.created_at, filters.range)
   })
+})
+
+const pagedRecords = computed(() => filteredRecords.value)
+
+const paginationItems = computed(() => {
+  const total = totalPages.value
+  const current = currentPage.value
+  const items = []
+  const pushPage = (value) => {
+    if (!items.some((item) => item.type === 'page' && item.value === value)) {
+      items.push({ type: 'page', value, label: String(value) })
+    }
+  }
+  const pushEllipsis = (key) => items.push({ type: 'ellipsis', value: key, label: '...' })
+
+  if (total <= 7) {
+    for (let page = 1; page <= total; page += 1) pushPage(page)
+    return items
+  }
+
+  pushPage(1)
+  const start = Math.max(2, current - 1)
+  const end = Math.min(total - 1, current + 1)
+  if (start > 2) pushEllipsis('left')
+  for (let page = start; page <= end; page += 1) pushPage(page)
+  if (end < total - 1) pushEllipsis('right')
+  pushPage(total)
+  return items
 })
 
 const quotaCostTotal = computed(() => {
@@ -181,19 +254,61 @@ const freePointCostTotal = computed(() => {
 })
 
 onMounted(() => {
-  fetchHistory()
+  loadHistoryPage()
 })
 
-async function fetchHistory() {
-  loading.value = true
+async function loadHistoryPage(options = {}) {
+  const requestId = ++historyRequestId
+  const params = getHistoryParams()
+  const cachedPage = readCachedHistoryPage(params)
+  const hasVisibleRecords = records.value.length > 0
+
+  if (cachedPage) {
+    applyHistoryPage(cachedPage)
+    loading.value = false
+    pageLoading.value = true
+  } else {
+    loading.value = !hasVisibleRecords
+    pageLoading.value = hasVisibleRecords
+  }
+
   try {
-    const res = await api.get('/history')
-    records.value = Array.isArray(res.data) ? res.data : (res.data.records || [])
+    const page = await fetchHistoryPage(params, { force: options.force === true })
+    if (requestId !== historyRequestId) return
+    applyHistoryPage(page)
   } catch (e) {
-    records.value = []
+    if (requestId !== historyRequestId) return
+    if (!cachedPage) {
+      records.value = []
+      totalRecords.value = 0
+      totalPages.value = 1
+    }
     ElMessage.error(e.response?.data?.detail || '历史记录加载失败')
   } finally {
-    loading.value = false
+    if (requestId === historyRequestId) {
+      loading.value = false
+      pageLoading.value = false
+    }
+  }
+}
+
+function applyHistoryPage(page) {
+  records.value = page.records || []
+  totalRecords.value = page.total || 0
+  currentPage.value = page.page || currentPage.value
+  pageSize.value = page.page_size || pageSize.value
+  totalPages.value = Math.max(1, page.total_pages || 1)
+  preloadThumbnails(records.value)
+}
+
+function getHistoryParams() {
+  return {
+    page: currentPage.value,
+    page_size: pageSize.value,
+    range: filters.range,
+    workflow: filters.workflow,
+    quality: filters.quality,
+    source: filters.source
   }
 }
 
@@ -202,6 +317,19 @@ function resetFilters() {
   filters.workflow = 'all'
   filters.quality = 'all'
   filters.source = 'all'
+  applyFilters()
+}
+
+function applyFilters() {
+  currentPage.value = 1
+  loadHistoryPage()
+}
+
+function goToPage(page) {
+  const nextPage = Math.min(Math.max(page, 1), totalPages.value)
+  if (nextPage === currentPage.value) return
+  currentPage.value = nextPage
+  loadHistoryPage()
 }
 
 function isInRange(timeStr, range) {
@@ -216,12 +344,32 @@ function isInRange(timeStr, range) {
   return true
 }
 
-function openPreview(record) {
+async function openPreview(record) {
+  const requestId = ++previewRequestId
   previewRecord.value = record
+  previewImageUrl.value = getCachedFullImageUrl(record) || ''
+  previewLoading.value = !previewImageUrl.value
+  try {
+    const loadedUrl = await warmFullImage(record)
+    if (requestId === previewRequestId) {
+      previewImageUrl.value = loadedUrl
+    }
+  } catch (_) {
+    if (requestId === previewRequestId) {
+      previewImageUrl.value = record.image_url || record.thumbnail_url || ''
+    }
+  } finally {
+    if (requestId === previewRequestId) {
+      previewLoading.value = false
+    }
+  }
 }
 
 function closePreview() {
+  previewRequestId += 1
   previewRecord.value = null
+  previewImageUrl.value = ''
+  previewLoading.value = false
 }
 
 function confirmDelete(record) {
@@ -238,8 +386,15 @@ async function doDelete() {
   try {
     await api.delete(`/history/${deleteTarget.value.id}`)
     records.value = records.value.filter((record) => record.id !== deleteTarget.value.id)
+    totalRecords.value = Math.max(0, totalRecords.value - 1)
+    removeHistoryRecordFromCache(deleteTarget.value.id)
+    removeCachedImage(deleteTarget.value)
     if (previewRecord.value?.id === deleteTarget.value.id) closePreview()
     deleteTarget.value = null
+    if (!records.value.length && currentPage.value > 1) {
+      currentPage.value -= 1
+      await loadHistoryPage({ force: true })
+    }
   } catch (e) {
     ElMessage.error(e.response?.data?.detail || '删除失败，请稍后重试')
   } finally {
@@ -249,6 +404,7 @@ async function doDelete() {
 
 function downloadImage(record) {
   if (!record.image_url) return
+  warmFullImage(record).catch(() => {})
   const a = document.createElement('a')
   a.href = record.image_url
   a.download = `2bis-${record.id}.png`
@@ -466,6 +622,11 @@ function formatTime(timeStr) {
 
 .history-table {
   overflow: hidden;
+  transition: opacity var(--transition-base);
+}
+
+.history-table.is-page-loading {
+  opacity: 0.58;
 }
 
 .history-row {
@@ -582,12 +743,76 @@ function formatTime(timeStr) {
   overflow: hidden;
 }
 
-.preview-modal img {
+.preview-image-frame {
+  position: relative;
+  display: grid;
+  place-items: center;
+  background: #111;
+}
+
+.preview-image-frame img {
   max-width: 100%;
   max-height: 70vh;
   display: block;
   object-fit: contain;
-  background: #111;
+}
+
+.preview-loading {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--color-muted);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 850;
+  transform: translateX(-50%);
+}
+
+.pagination-bar {
+  width: max-content;
+  max-width: 100%;
+  margin: 22px auto 0;
+  display: flex;
+  overflow: hidden;
+  border: 1px solid var(--color-line-strong);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: var(--shadow-sm);
+}
+
+.pagination-bar button {
+  min-width: 54px;
+  height: 44px;
+  border: 0;
+  border-right: 1px solid var(--color-line);
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.pagination-bar button:last-child {
+  border-right: 0;
+}
+
+.pagination-bar button.active {
+  background: rgba(28, 180, 151, 0.1);
+  color: #087e70;
+  box-shadow: inset 0 0 0 1px #14b8a6;
+}
+
+.pagination-bar button.ellipsis {
+  cursor: default;
+}
+
+.pagination-bar button:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
 }
 
 .preview-close {
@@ -688,6 +913,15 @@ function formatTime(timeStr) {
   .row-actions {
     grid-column: 2;
     justify-content: flex-start;
+  }
+
+  .pagination-bar {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .pagination-bar button {
+    min-width: 42px;
   }
 }
 
