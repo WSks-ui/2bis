@@ -34,6 +34,7 @@ class UserInfo(BaseModel):
     monthly_quota_reset_at: Optional[datetime] = None
     trial_activated: bool = False
     trial_expire_at: Optional[datetime] = None
+    is_admin: bool = False
     created_at: datetime
 
 
@@ -88,6 +89,8 @@ class GenerationTaskResponse(BaseModel):
     upstream_content_type: Optional[str] = None
     upstream_elapsed_seconds: Optional[float] = None
     upstream_payload_length: Optional[int] = None
+    progress_stage: Optional[str] = None
+    progress_message: Optional[str] = None
     image_url: Optional[str] = None
     error_message: Optional[str] = None
     created_at: datetime
@@ -100,6 +103,7 @@ class HistoryItem(BaseModel):
     task_id: Optional[int] = None
     prompt: str
     image_url: Optional[str] = None
+    thumbnail_url: Optional[str] = None
     quality: str
     points_cost: int
     balance_source: Optional[str] = None
@@ -116,6 +120,14 @@ class HistoryItem(BaseModel):
     upstream_elapsed_seconds: Optional[float] = None
     upstream_payload_length: Optional[int] = None
     created_at: datetime
+
+
+class HistoryPageResponse(BaseModel):
+    records: list[HistoryItem]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 class OrderCreate(BaseModel):
@@ -239,3 +251,62 @@ class PointsBalanceResponse(BaseModel):
     monthly_quota_reset_at: Optional[datetime] = None
     trial_activated: bool = False
     trial_expire_at: Optional[datetime] = None
+    is_admin: bool = False
+
+
+class AdminApiKeyCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=80)
+    provider: str = Field(default="aiartmirror", min_length=1, max_length=40)
+    api_url: str = Field(default="https://www.aiartmirror.com/v1", min_length=8, max_length=255)
+    api_key: str = Field(..., min_length=8, max_length=4096)
+    response_format: Optional[str] = Field(default=None, max_length=30)
+    send_quality: bool = True
+    is_enabled: bool = True
+    activate: bool = True
+    test_before_activate: bool = False
+
+
+class AdminApiKeyUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    provider: Optional[str] = Field(default=None, min_length=1, max_length=40)
+    api_url: Optional[str] = Field(default=None, min_length=8, max_length=255)
+    api_key: Optional[str] = Field(default=None, min_length=8, max_length=4096)
+    response_format: Optional[str] = Field(default=None, max_length=30)
+    clear_response_format: bool = False
+    send_quality: Optional[bool] = None
+    is_enabled: Optional[bool] = None
+
+
+class AdminApiKeyResponse(BaseModel):
+    id: int
+    name: str
+    provider: str
+    api_url: str
+    key_mask: str
+    response_format: Optional[str] = None
+    send_quality: bool = True
+    is_active: bool
+    is_enabled: bool
+    circuit_state: str = "closed"
+    circuit_reason: Optional[str] = None
+    circuit_open_until: Optional[datetime] = None
+    failure_count: int = 0
+    last_failure_at: Optional[datetime] = None
+    last_test_status: Optional[str] = None
+    last_test_message: Optional[str] = None
+    last_tested_at: Optional[datetime] = None
+    last_used_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AdminApiKeyTestRequest(BaseModel):
+    api_url: Optional[str] = Field(default=None, min_length=8, max_length=255)
+    api_key: Optional[str] = Field(default=None, min_length=8, max_length=4096)
+    response_format: Optional[str] = Field(default=None, max_length=30)
+
+
+class AdminApiKeyTestResponse(BaseModel):
+    ok: bool
+    message: str
+    tested_at: datetime

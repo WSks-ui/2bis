@@ -8,10 +8,30 @@ DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./aigen.db")
 SECRET_KEY: str = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
 ALGORITHM: str = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_DAYS: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_DAYS", "7"))
+ADMIN_USERNAMES: set[str] = {
+    username.strip()
+    for username in os.getenv("ADMIN_USERNAMES", "").split(",")
+    if username.strip()
+}
+API_KEY_ENCRYPTION_SECRET: str = os.getenv("API_KEY_ENCRYPTION_SECRET", "")
+API_KEY_CONFIG_CACHE_SECONDS: float = float(os.getenv("API_KEY_CONFIG_CACHE_SECONDS", "5"))
+API_KEY_CIRCUIT_FAILURE_THRESHOLD: int = int(os.getenv("API_KEY_CIRCUIT_FAILURE_THRESHOLD", "3"))
+API_KEY_CIRCUIT_COOLDOWN_SECONDS: int = int(os.getenv("API_KEY_CIRCUIT_COOLDOWN_SECONDS", "600"))
 AI_API_URL: str = os.getenv("AI_API_URL", "https://www.aiartmirror.com/v1")
 AI_API_KEY: str = os.getenv("AI_API_KEY", "")
 AI_TIMEOUT: int = int(os.getenv("AI_TIMEOUT", "2400"))
-AI_IMAGE_RESPONSE_FORMAT: str = os.getenv("AI_IMAGE_RESPONSE_FORMAT", "").strip().lower()
+AI_RESPONSE_BODY_TIMEOUT: int = int(os.getenv("AI_RESPONSE_BODY_TIMEOUT", "900"))
+_AI_IMAGE_RESPONSE_FORMAT_RAW: str = os.getenv("AI_IMAGE_RESPONSE_FORMAT", "").strip().lower()
+if _AI_IMAGE_RESPONSE_FORMAT_RAW in {"", "auto", "none", "off", "disabled", "false"}:
+    AI_IMAGE_RESPONSE_FORMAT = ""
+else:
+    AI_IMAGE_RESPONSE_FORMAT = _AI_IMAGE_RESPONSE_FORMAT_RAW
+AI_RESPONSE_FORMAT_FALLBACK: bool = os.getenv("AI_RESPONSE_FORMAT_FALLBACK", "false").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 AI_MAX_CONCURRENT: int = int(os.getenv("AI_MAX_CONCURRENT", "2"))
 AI_MIN_REQUEST_INTERVAL_SECONDS: float = float(os.getenv("AI_MIN_REQUEST_INTERVAL_SECONDS", "1.0"))
 AI_RATE_LIMIT_MAX_RETRIES: int = int(os.getenv("AI_RATE_LIMIT_MAX_RETRIES", "6"))

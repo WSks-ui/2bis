@@ -1,0 +1,329 @@
+import base64
+import hashlib
+import time
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+import httpx
+from cryptography.fernet import Fernet, InvalidToken
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import (
+    AI_API_KEY,
+    AI_API_URL,
+    AI_IMAGE_RESPONSE_FORMAT,
+    API_KEY_CONFIG_CACHE_SECONDS,
+    API_KEY_CIRCUIT_COOLDOWN_SECONDS,
+    API_KEY_CIRCUIT_FAILURE_THRESHOLD,
+    API_KEY_ENCRYPTION_SECRET,
+    SECRET_KEY,
+)
+from app.database import async_session
+from app.models import AdminAuditLog, ApiKeyConfig
+
+
+class ApiKeyConfigError(Exception):
+    pass
+
+
+@dataclass(frozen=True)
+class ActiveApiConfig:
+    api_url: str
+    api_key: str
+    response_format: str | None
+    send_quality: bool = True
+    config_id: int | None = None
+    key_mask: str | None = None
+
+
+_fernet: Fernet | None = None
+_cached_config: ActiveApiConfig | None = None
+_cached_at = 0.0
+
+
+def _fernet_key() -> bytes:
+    secret = API_KEY_ENCRYPTION_SECRET or SECRET_KEY
+    digest = hashlib.sha256(secret.encode("utf-8")).digest()
+    return base64.urlsafe_b64encode(digest)
+
+
+def get_fernet() -> Fernet:
+    global _fernet
+    if _fernet is None:
+        _fernet = Fernet(_fernet_key())
+    return _fernet
+
+
+def encrypt_api_key(api_key: str) -> str:
+    cleaned = api_key.strip()
+    if not cleaned:
+        raise ApiKeyConfigError("API Key cannot be empty")
+    return get_fernet().encrypt(cleaned.encode("utf-8")).decode("ascii")
+
+
+def decrypt_api_key(encrypted_api_key: str) -> str:
+    try:
+        return get_fernet().decrypt(encrypted_api_key.encode("ascii")).decode("utf-8")
+    except (InvalidToken, ValueError) as exc:
+        raise ApiKeyConfigError("API Key decrypt failed; check API_KEY_ENCRYPTION_SECRET") from exc
+
+
+def mask_api_key(api_key: str) -> str:
+    cleaned = api_key.strip()
+    if len(cleaned) <= 8:
+        return "*" * len(cleaned)
+    prefix = cleaned[: min(6, len(cleaned) - 4)]
+    suffix = cleaned[-4:]
+    return f"{prefix}...{suffix}"
+
+
+def normalize_response_format(value: str | None) -> str | None:
+    normalized = (value or "").strip().lower()
+    if normalized in {"", "auto", "none", "off", "disabled", "false"}:
+        return None
+    if normalized not in {"url", "b64_json"}:
+        raise ApiKeyConfigError("response_format must be empty, url, or b64_json")
+    return normalized
+
+
+def normalize_api_url(api_url: str) -> str:
+    cleaned = (api_url or "").strip().rstrip("/")
+    if not cleaned:
+        raise ApiKeyConfigError("API URL cannot be empty")
+    if not cleaned.startswith(("http://", "https://")):
+        raise ApiKeyConfigError("API URL must start with http:// or https://")
+    return cleaned
+
+
+def invalidate_active_api_config_cache() -> None:
+    global _cached_config, _cached_at
+    _cached_config = None
+    _cached_at = 0.0
+
+
+async def get_active_api_config(force_refresh: bool = False) -> ActiveApiConfig:
+    global _cached_config, _cached_at
+    now = time.monotonic()
+    if (
+        not force_refresh
+        and _cached_config is not None
+        and now - _cached_at <= API_KEY_CONFIG_CACHE_SECONDS
+    ):
+        return _cached_config
+
+    async with async_session() as db:
+        config = await select_runtime_api_config(db)
+
+    if config is not None:
+        active = ActiveApiConfig(
+            api_url=normalize_api_url(config.api_url),
+            api_key=decrypt_api_key(config.encrypted_api_key),
+            response_format=normalize_response_format(config.response_format),
+            send_quality=bool(config.send_quality),
+            config_id=config.id,
+            key_mask=config.key_mask,
+        )
+    else:
+        active = ActiveApiConfig(
+            api_url=normalize_api_url(AI_API_URL),
+            api_key=AI_API_KEY,
+            response_format=normalize_response_format(AI_IMAGE_RESPONSE_FORMAT),
+            send_quality=True,
+            config_id=None,
+            key_mask=mask_api_key(AI_API_KEY) if AI_API_KEY else None,
+        )
+
+    _cached_config = active
+    _cached_at = now
+    return active
+
+
+def is_circuit_open(config: ApiKeyConfig, now: datetime | None = None) -> bool:
+    if config.circuit_state != "open":
+        return False
+    if config.circuit_open_until is None:
+        return True
+    return config.circuit_open_until > (now or datetime.utcnow())
+
+
+async def select_runtime_api_config(db: AsyncSession) -> ApiKeyConfig | None:
+    now = datetime.utcnow()
+    result = await db.execute(
+        select(ApiKeyConfig)
+        .where(ApiKeyConfig.is_enabled.is_(True))
+        .order_by(ApiKeyConfig.is_active.desc(), ApiKeyConfig.updated_at.desc(), ApiKeyConfig.id.desc())
+    )
+    configs = result.scalars().all()
+    selected = next((config for config in configs if not is_circuit_open(config, now)), None)
+    if selected is None:
+        return None
+
+    if not selected.is_active:
+        await db.execute(
+            update(ApiKeyConfig)
+            .where(ApiKeyConfig.id != selected.id, ApiKeyConfig.is_active.is_(True))
+            .values(is_active=False, updated_at=now)
+        )
+        selected.is_active = True
+        selected.updated_at = now
+        await db.commit()
+        await db.refresh(selected)
+        invalidate_active_api_config_cache()
+
+    return selected
+
+
+async def touch_api_config_used(config_id: int | None) -> None:
+    if config_id is None:
+        return
+    async with async_session() as db:
+        await db.execute(
+            update(ApiKeyConfig)
+            .where(ApiKeyConfig.id == config_id)
+            .values(
+                last_used_at=datetime.utcnow(),
+                failure_count=0,
+                circuit_state="closed",
+                circuit_reason=None,
+                circuit_open_until=None,
+            )
+        )
+        await db.commit()
+
+
+async def mark_api_config_failed(
+    config_id: int | None,
+    message: str,
+    *,
+    terminal: bool = False,
+) -> None:
+    if config_id is None:
+        return
+    now = datetime.utcnow()
+    open_until = now + timedelta(seconds=API_KEY_CIRCUIT_COOLDOWN_SECONDS)
+    async with async_session() as db:
+        config = await db.get(ApiKeyConfig, config_id)
+        if config is None:
+            return
+
+        failure_count = int(config.failure_count or 0) + 1
+        should_open = terminal or failure_count >= API_KEY_CIRCUIT_FAILURE_THRESHOLD
+        values = {
+            "failure_count": failure_count,
+            "last_failure_at": now,
+            "last_test_status": "failed",
+            "last_test_message": message[:500],
+            "last_tested_at": now,
+            "updated_at": now,
+        }
+        if should_open:
+            values.update(
+                {
+                    "circuit_state": "open",
+                    "circuit_reason": message[:500],
+                    "circuit_open_until": None if terminal else open_until,
+                    "is_active": False,
+                }
+            )
+
+        await db.execute(
+            update(ApiKeyConfig)
+            .where(ApiKeyConfig.id == config_id)
+            .values(**values)
+        )
+        await db.commit()
+    invalidate_active_api_config_cache()
+
+
+async def close_api_config_circuit(config_id: int | None) -> None:
+    if config_id is None:
+        return
+    async with async_session() as db:
+        await db.execute(
+            update(ApiKeyConfig)
+            .where(ApiKeyConfig.id == config_id)
+            .values(
+                failure_count=0,
+                circuit_state="closed",
+                circuit_reason=None,
+                circuit_open_until=None,
+                updated_at=datetime.utcnow(),
+            )
+        )
+        await db.commit()
+    invalidate_active_api_config_cache()
+
+
+async def write_admin_audit(
+    db: AsyncSession,
+    admin_user_id: int,
+    action: str,
+    target_type: str,
+    target_id: int | None = None,
+    summary: str | None = None,
+) -> None:
+    db.add(
+        AdminAuditLog(
+            admin_user_id=admin_user_id,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            summary=summary,
+            created_at=datetime.utcnow(),
+        )
+    )
+
+
+async def deactivate_other_configs(db: AsyncSession, active_id: int) -> None:
+    await db.execute(
+        update(ApiKeyConfig)
+        .where(ApiKeyConfig.id != active_id, ApiKeyConfig.is_active.is_(True))
+        .values(is_active=False, updated_at=datetime.utcnow())
+    )
+
+
+def summarize_error(exc: Exception) -> str:
+    message = str(exc).strip()
+    if not message:
+        message = exc.__class__.__name__
+    return message[:500]
+
+
+async def probe_api_key(
+    api_url: str,
+    api_key: str,
+    response_format: str | None = None,
+    send_quality: bool = True,
+    timeout_seconds: float = 20.0,
+) -> tuple[bool, str]:
+    payload = {
+        "model": "gpt-image-2",
+        "prompt": "connection test",
+        "n": 1,
+        "size": "1024x1024",
+    }
+    if send_quality:
+        payload["quality"] = "low"
+    normalized_format = normalize_response_format(response_format)
+    if normalized_format:
+        payload["response_format"] = normalized_format
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout_seconds, proxy=None, trust_env=False) as client:
+            response = await client.post(
+                f"{normalize_api_url(api_url)}/images/generations",
+                json=payload,
+                headers={"Authorization": f"Bearer {api_key.strip()}"},
+            )
+        if response.status_code == 200:
+            return True, "连接测试成功"
+
+        detail = response.text
+        try:
+            data = response.json()
+            detail = data.get("error", {}).get("message", detail)
+        except Exception:
+            pass
+        return False, f"HTTP {response.status_code}: {detail[:360]}"
+    except Exception as exc:
+        return False, summarize_error(exc)

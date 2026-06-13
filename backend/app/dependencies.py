@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import ALGORITHM, SECRET_KEY
+from app.config import ADMIN_USERNAMES
 from app.database import get_db
 from app.models import User
 
@@ -31,3 +32,11 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="User not found")
 
     return user
+
+
+async def get_current_admin_user(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    if current_user.is_admin or current_user.username in ADMIN_USERNAMES:
+        return current_user
+    raise HTTPException(status_code=403, detail="Admin permission required")

@@ -87,6 +87,10 @@ if _is_sqlite:
                 cursor.execute("ALTER TABLE generation_tasks ADD COLUMN workflow_preset VARCHAR(80)")
             if "source_image_mime_type" not in columns:
                 cursor.execute("ALTER TABLE generation_tasks ADD COLUMN source_image_mime_type VARCHAR(50)")
+            if "progress_stage" not in columns:
+                cursor.execute("ALTER TABLE generation_tasks ADD COLUMN progress_stage VARCHAR(40)")
+            if "progress_message" not in columns:
+                cursor.execute("ALTER TABLE generation_tasks ADD COLUMN progress_message TEXT")
             _sqlite_add_upstream_audit_columns(cursor, "generation_tasks", columns)
 
         if "orders" in tables:
@@ -120,6 +124,77 @@ if _is_sqlite:
                 cursor.execute("ALTER TABLE users ADD COLUMN trial_expire_at DATETIME")
             if "trial_high_quality_used" not in columns:
                 cursor.execute("ALTER TABLE users ADD COLUMN trial_high_quality_used INTEGER DEFAULT 0")
+            if "is_admin" not in columns:
+                cursor.execute("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0 NOT NULL")
+
+        if "api_key_configs" not in tables:
+            cursor.execute(
+                """
+                CREATE TABLE api_key_configs (
+                    id INTEGER NOT NULL,
+                    name VARCHAR(80) NOT NULL,
+                    provider VARCHAR(40) NOT NULL,
+                    api_url VARCHAR(255) NOT NULL,
+                    encrypted_api_key TEXT NOT NULL,
+                    key_mask VARCHAR(80) NOT NULL,
+                    response_format VARCHAR(30),
+                    send_quality BOOLEAN DEFAULT 1 NOT NULL,
+                    is_active BOOLEAN DEFAULT 0 NOT NULL,
+                    is_enabled BOOLEAN DEFAULT 1 NOT NULL,
+                    circuit_state VARCHAR(20) DEFAULT 'closed' NOT NULL,
+                    circuit_reason TEXT,
+                    circuit_open_until DATETIME,
+                    failure_count INTEGER DEFAULT 0 NOT NULL,
+                    last_failure_at DATETIME,
+                    last_test_status VARCHAR(20),
+                    last_test_message TEXT,
+                    last_tested_at DATETIME,
+                    last_used_at DATETIME,
+                    created_by INTEGER REFERENCES users(id),
+                    updated_by INTEGER REFERENCES users(id),
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    PRIMARY KEY (id)
+                )
+                """
+            )
+            cursor.execute("CREATE INDEX ix_api_key_configs_id ON api_key_configs (id)")
+            cursor.execute("CREATE INDEX ix_api_key_configs_is_active ON api_key_configs (is_active)")
+            cursor.execute("CREATE INDEX ix_api_key_configs_is_enabled ON api_key_configs (is_enabled)")
+        else:
+            columns = _sqlite_columns(cursor, "api_key_configs")
+            if "circuit_state" not in columns:
+                cursor.execute("ALTER TABLE api_key_configs ADD COLUMN circuit_state VARCHAR(20) DEFAULT 'closed' NOT NULL")
+            if "send_quality" not in columns:
+                cursor.execute("ALTER TABLE api_key_configs ADD COLUMN send_quality BOOLEAN DEFAULT 1 NOT NULL")
+            if "circuit_reason" not in columns:
+                cursor.execute("ALTER TABLE api_key_configs ADD COLUMN circuit_reason TEXT")
+            if "circuit_open_until" not in columns:
+                cursor.execute("ALTER TABLE api_key_configs ADD COLUMN circuit_open_until DATETIME")
+            if "failure_count" not in columns:
+                cursor.execute("ALTER TABLE api_key_configs ADD COLUMN failure_count INTEGER DEFAULT 0 NOT NULL")
+            if "last_failure_at" not in columns:
+                cursor.execute("ALTER TABLE api_key_configs ADD COLUMN last_failure_at DATETIME")
+
+        if "admin_audit_logs" not in tables:
+            cursor.execute(
+                """
+                CREATE TABLE admin_audit_logs (
+                    id INTEGER NOT NULL,
+                    admin_user_id INTEGER REFERENCES users(id),
+                    action VARCHAR(80) NOT NULL,
+                    target_type VARCHAR(60) NOT NULL,
+                    target_id INTEGER,
+                    summary TEXT,
+                    created_at DATETIME NOT NULL,
+                    PRIMARY KEY (id)
+                )
+                """
+            )
+            cursor.execute("CREATE INDEX ix_admin_audit_logs_id ON admin_audit_logs (id)")
+            cursor.execute("CREATE INDEX ix_admin_audit_logs_admin_user_id ON admin_audit_logs (admin_user_id)")
+            cursor.execute("CREATE INDEX ix_admin_audit_logs_action ON admin_audit_logs (action)")
+            cursor.execute("CREATE INDEX ix_admin_audit_logs_created_at ON admin_audit_logs (created_at)")
 
         cursor.close()
 
@@ -140,7 +215,7 @@ async def get_db():
 
 
 async def init_db():
-    from app.models import DailyCheckin, GenerateHistory, GenerationTask, Order, User  # noqa: F401
+    from app.models import AdminAuditLog, ApiKeyConfig, DailyCheckin, GenerateHistory, GenerationTask, Order, User  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
