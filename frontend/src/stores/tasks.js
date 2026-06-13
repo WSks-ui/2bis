@@ -4,11 +4,17 @@ import api from '../api'
 import { usePointsStore } from './points'
 
 const POLL_INTERVAL = 5000
+const HIDDEN_POLL_INTERVAL = 15000
 const ACTIVE_STATUSES = ['pending', 'processing']
+const TASKS_CACHE_MAX_AGE = 30 * 1000
 
 export const useTasksStore = defineStore('tasks', () => {
   const tasks = ref([])
-  const pollingTimers = new Map()
+  let pollingTimer = null
+  let pollingInFlight = false
+  let visibilityListening = false
+  let tasksRequest = null
+  let lastFetchedAt = 0
 
   function normalizeTask(data, local = {}) {
     return {
@@ -21,7 +27,7 @@ export const useTasksStore = defineStore('tasks', () => {
       status: mapStatus(data.status),
       rawStatus: data.status,
       imageUrl: data.image_url || '',
-      error: data.error_message || '',
+      error: ['failed', 'refunded'].includes(data.status) ? data.error_message || '' : '',
       pointsCost: data.points_cost || 0,
       balanceSource: data.balance_source || '',
       workflowType: data.workflow_type || 'standard',
@@ -34,6 +40,8 @@ export const useTasksStore = defineStore('tasks', () => {
       upstreamResponseFormat: data.upstream_response_format || '',
       upstreamRequestId: data.upstream_request_id || '',
       upstreamElapsedSeconds: data.upstream_elapsed_seconds ?? null,
+      progressStage: data.progress_stage || '',
+      progressMessage: data.progress_message || '',
       createdAt: data.created_at || local.createdAt || new Date().toISOString(),
       startedAt: data.started_at || null,
       finishedAt: data.finished_at || null,
@@ -51,6 +59,10 @@ export const useTasksStore = defineStore('tasks', () => {
 
   function isActive(task) {
     return ACTIVE_STATUSES.includes(task.rawStatus)
+  }
+
+  function activeTaskIds() {
+    return tasks.value.filter(isActive).map((task) => task.id)
   }
 
   function upsertTask(task) {
@@ -93,6 +105,8 @@ export const useTasksStore = defineStore('tasks', () => {
       upstreamResponseFormat: '',
       upstreamRequestId: '',
       upstreamElapsedSeconds: null,
+      progressStage: '',
+      progressMessage: '',
       createdAt: new Date().toISOString(),
       lastPolledAt: null,
       pollError: '',
@@ -140,30 +154,40 @@ export const useTasksStore = defineStore('tasks', () => {
   }
 
   async function removeTask(id) {
-    stopPolling(id)
     try {
       await api.delete(`/generate/tasks/${id}`)
     } catch (_) {}
     const idx = tasks.value.findIndex((t) => t.id === id)
     if (idx !== -1) tasks.value.splice(idx, 1)
+    stopPolling()
   }
 
   function clearCompleted() {
-    tasks.value
-      .filter((t) => t.status === 'done' || t.status === 'failed')
-      .forEach((t) => stopPolling(t.id))
     tasks.value = tasks.value.filter(
       (t) => t.status !== 'done' && t.status !== 'failed'
     )
+    stopPolling()
   }
 
   async function fetchTasks() {
-    const res = await api.get('/generate/tasks')
-    const remoteTasks = res.data.map((item) => normalizeTask(item))
-    tasks.value = remoteTasks
-    remoteTasks.forEach((task) => {
-      if (isActive(task)) startPolling(task.id)
-    })
+    if (tasksRequest) return tasksRequest
+    if (lastFetchedAt && Date.now() - lastFetchedAt <= TASKS_CACHE_MAX_AGE) {
+      resumePolling()
+      return tasks.value
+    }
+
+    tasksRequest = api.get('/generate/tasks')
+      .then((res) => {
+        const remoteTasks = res.data.map((item) => normalizeTask(item))
+        tasks.value = remoteTasks
+        lastFetchedAt = Date.now()
+        resumePolling()
+        return remoteTasks
+      })
+      .finally(() => {
+        tasksRequest = null
+      })
+    return tasksRequest
   }
 
   async function fetchTask(id) {
@@ -186,25 +210,76 @@ export const useTasksStore = defineStore('tasks', () => {
   }
 
   function startPolling(id) {
-    if (pollingTimers.has(id)) return
-    const timer = window.setInterval(() => {
-      fetchTask(id).catch(() => {})
-    }, POLL_INTERVAL)
-    pollingTimers.set(id, timer)
+    ensureVisibilityListener()
+    schedulePolling()
     fetchTask(id).catch(() => {})
   }
 
-  function stopPolling(id) {
-    const timer = pollingTimers.get(id)
-    if (timer) {
-      window.clearInterval(timer)
-      pollingTimers.delete(id)
-    }
+  function resumePolling() {
+    if (!activeTaskIds().length) return
+    ensureVisibilityListener()
+    schedulePolling(0)
+  }
+
+  function stopPolling() {
+    if (activeTaskIds().length) return
+    clearPollingTimer()
   }
 
   function stopAllPolling() {
-    pollingTimers.forEach((timer) => window.clearInterval(timer))
-    pollingTimers.clear()
+    clearPollingTimer()
+    if (visibilityListening && typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      visibilityListening = false
+    }
+  }
+
+  function clearPollingTimer() {
+    if (!pollingTimer) return
+    window.clearTimeout(pollingTimer)
+    pollingTimer = null
+  }
+
+  function schedulePolling(delay = pollDelay()) {
+    if (pollingTimer || !activeTaskIds().length) return
+    pollingTimer = window.setTimeout(runPollingLoop, delay)
+  }
+
+  async function runPollingLoop() {
+    pollingTimer = null
+    const ids = activeTaskIds()
+    if (!ids.length) return
+    if (pollingInFlight) {
+      schedulePolling()
+      return
+    }
+
+    pollingInFlight = true
+    try {
+      await Promise.allSettled(ids.map((id) => fetchTask(id)))
+    } finally {
+      pollingInFlight = false
+      if (activeTaskIds().length) schedulePolling()
+    }
+  }
+
+  function pollDelay() {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      return HIDDEN_POLL_INTERVAL
+    }
+    return POLL_INTERVAL
+  }
+
+  function ensureVisibilityListener() {
+    if (visibilityListening || typeof document === 'undefined') return
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    visibilityListening = true
+  }
+
+  function handleVisibilityChange() {
+    if (document.visibilityState !== 'visible' || !activeTaskIds().length) return
+    clearPollingTimer()
+    runPollingLoop()
   }
 
   async function refreshBalance() {
@@ -220,6 +295,7 @@ export const useTasksStore = defineStore('tasks', () => {
     removeTask,
     clearCompleted,
     fetchTasks,
+    resumePolling,
     stopAllPolling,
   }
 })

@@ -38,6 +38,8 @@ def task_response(task: GenerationTask) -> GenerationTaskResponse:
         upstream_content_type=task.upstream_content_type,
         upstream_elapsed_seconds=task.upstream_elapsed_seconds,
         upstream_payload_length=task.upstream_payload_length,
+        progress_stage=task.progress_stage,
+        progress_message=task.progress_message,
         image_url=task.image_url,
         error_message=task.error_message,
         created_at=task.created_at,

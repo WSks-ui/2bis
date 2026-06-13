@@ -57,6 +57,7 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
         monthly_quota_reset_at=user.monthly_quota_reset_at,
         trial_activated=user.trial_activated,
         trial_expire_at=user.trial_expire_at,
+        is_admin=user.is_admin,
         created_at=user.created_at,
     )
 

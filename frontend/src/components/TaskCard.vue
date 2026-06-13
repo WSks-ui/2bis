@@ -1,7 +1,7 @@
 <template>
   <article :class="['task-card', `task-card--${task.status}`]">
     <div v-if="task.status === 'done' && task.imageUrl" class="task-image-wrap">
-      <img :src="task.imageUrl" :alt="task.prompt" class="task-image" loading="lazy" />
+      <img :src="task.imageUrl" :alt="task.prompt" class="task-image" loading="lazy" decoding="async" />
       <div class="task-image-actions">
         <button class="task-action-btn" @click.stop="downloadImage" title="下载">↓</button>
         <button class="task-action-btn" @click.stop="$emit('remove', task.id)" title="删除">×</button>
@@ -10,17 +10,18 @@
 
     <div v-else class="task-pending">
       <div v-if="task.refPreview" class="task-ref-thumb">
-        <img :src="task.refPreview" alt="参考图" />
+        <img :src="task.refPreview" alt="参考图" loading="lazy" decoding="async" />
       </div>
       <div class="task-state">
         <span class="status-dot"></span>
         <strong>{{ statusLabel }}</strong>
       </div>
-      <div v-if="timeLabel || task.pollError" class="task-progress-meta">
+      <div v-if="task.progressMessage || timeLabel || task.pollError" class="task-progress-meta">
+        <span v-if="task.progressMessage">{{ task.progressMessage }}</span>
         <span v-if="timeLabel">{{ timeLabel }}</span>
         <span v-if="task.pollError">刷新异常：{{ task.pollError }}</span>
       </div>
-      <p>{{ task.error || task.prompt }}</p>
+      <p>{{ taskDisplayText }}</p>
     </div>
 
     <footer class="task-meta">
@@ -39,7 +40,8 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, watch } from 'vue'
+import { acquireTicker, releaseTicker, sharedNow } from '../services/ticker'
 
 const props = defineProps({
   task: { type: Object, required: true },
@@ -47,13 +49,28 @@ const props = defineProps({
 
 defineEmits(['remove'])
 
-const now = ref(Date.now())
-const timer = window.setInterval(() => {
-  now.value = Date.now()
-}, 1000)
+let tickerActive = false
+
+watch(
+  () => props.task.status,
+  (status) => {
+    const needsTicker = status === 'queued' || status === 'generating'
+    if (needsTicker && !tickerActive) {
+      acquireTicker()
+      tickerActive = true
+    } else if (!needsTicker && tickerActive) {
+      releaseTicker()
+      tickerActive = false
+    }
+  },
+  { immediate: true }
+)
 
 onBeforeUnmount(() => {
-  window.clearInterval(timer)
+  if (tickerActive) {
+    releaseTicker()
+    tickerActive = false
+  }
 })
 
 const modeLabel = computed(() => {
@@ -68,12 +85,19 @@ const qualityLabel = computed(() => {
 })
 
 const statusLabel = computed(() => {
+  if (props.task.progressStage === 'receiving') return '接收图片中'
+  if (props.task.progressStage === 'saving') return '保存图片中'
   const map = {
     queued: '排队中',
     generating: '生成中',
     failed: '已退款'
   }
   return map[props.task.status] || props.task.status
+})
+
+const taskDisplayText = computed(() => {
+  if (props.task.error) return props.task.error
+  return props.task.prompt
 })
 
 const sourceLabel = computed(() => {
@@ -96,7 +120,7 @@ const timeLabel = computed(() => {
   }
 
   if (props.task.status === 'queued' || props.task.status === 'generating') {
-    return `已等待 ${formatDuration(now.value - createdAt)}`
+    return `已等待 ${formatDuration(sharedNow.value - createdAt)}`
   }
 
   return ''
@@ -110,7 +134,8 @@ const shortRequestId = computed(() => {
 
 function parseDate(value) {
   if (!value) return null
-  const date = new Date(value)
+  const normalized = String(value).includes('T') ? String(value) : `${String(value).replace(' ', 'T')}Z`
+  const date = new Date(/[zZ]|[+-]\d{2}:\d{2}$/.test(normalized) ? normalized : `${normalized}Z`)
   if (Number.isNaN(date.getTime())) return null
   return date.getTime()
 }
@@ -147,6 +172,8 @@ function downloadImage() {
   border: 1px solid var(--color-line);
   background: rgba(255, 255, 255, 0.74);
   box-shadow: var(--shadow-sm);
+  content-visibility: auto;
+  contain-intrinsic-size: 360px 460px;
   transition: transform var(--transition-base), box-shadow var(--transition-base);
 }
 
