@@ -4,10 +4,12 @@ import os
 import uvicorn
 
 from app.config import UVICORN_WORKERS
+from app.logging_config import configure_logging
 from worker import main as worker_main
 
 
 async def main():
+    configure_logging()
     reload = os.getenv("RELOAD", "false").lower() in ("true", "1", "yes")
     config = uvicorn.Config(
         "app.main:app",
@@ -15,6 +17,7 @@ async def main():
         port=int(os.getenv("PORT", "8000")),
         reload=reload,
         workers=1 if reload else max(1, UVICORN_WORKERS),
+        log_config=None,
     )
     server = uvicorn.Server(config)
 
