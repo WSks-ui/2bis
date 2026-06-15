@@ -1,4 +1,5 @@
 import unittest
+import json
 from datetime import datetime, timedelta
 from types import ModuleType
 from unittest.mock import AsyncMock, patch
@@ -18,10 +19,12 @@ from app.models import GenerateHistory, GenerationTask, GenerationTaskStatus, Us
 from app.services.ai_client import (
     AIImageResult,
     AIInsufficientCreditsError,
+    AINoAvailableApiConfigError,
     AIResponseBodyTimeoutError,
     AIResponseInterruptedError,
     AIUpstreamServerError,
     AIUnsupportedParameterError,
+    AIUsageLimitError,
 )
 
 
@@ -37,6 +40,41 @@ class WorkerRecoveryTest(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self) -> None:
         self.session_patch.stop()
         await self.engine.dispose()
+
+    async def test_read_task_source_images_uses_multiple_saved_images(self) -> None:
+        task = GenerationTask(
+            source_image_paths=json.dumps(["a.png", "b.jpg", "c.webp"]),
+            source_image_mime_types=json.dumps(["image/png", "image/jpeg", "image/webp"]),
+        )
+
+        async def fake_read(path: str) -> bytes:
+            return path.encode("utf-8")
+
+        with patch.object(worker, "read_upload_file", side_effect=fake_read):
+            images = await worker.read_task_source_images(task)
+
+        self.assertEqual(
+            images,
+            [
+                (b"a.png", "image-1.png", "image/png"),
+                (b"b.jpg", "image-2.jpg", "image/jpeg"),
+                (b"c.webp", "image-3.webp", "image/webp"),
+            ],
+        )
+
+    async def test_read_task_source_images_falls_back_to_legacy_single_image(self) -> None:
+        task = GenerationTask(
+            source_image_path="legacy.jpg",
+            source_image_mime_type="image/jpeg",
+        )
+
+        async def fake_read(path: str) -> bytes:
+            return path.encode("utf-8")
+
+        with patch.object(worker, "read_upload_file", side_effect=fake_read):
+            images = await worker.read_task_source_images(task)
+
+        self.assertEqual(images, [(b"legacy.jpg", "image-1.jpg", "image/jpeg")])
 
     async def test_stale_processing_task_is_refunded_without_requeue(self) -> None:
         async with self.session_factory() as db:
@@ -91,6 +129,12 @@ class WorkerRecoveryTest(unittest.IsolatedAsyncioTestCase):
             response_request_id="req_remote",
             response_content_type="application/json",
             elapsed_seconds=180.0,
+            header_seconds=159.0,
+            body_seconds=20.5,
+            parse_seconds=0.25,
+            body_bytes=15425302,
+            content_length=15425302,
+            transfer_encoding="chunked",
             payload_length=len(remote_url),
         )
 
@@ -129,9 +173,19 @@ class WorkerRecoveryTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(task.image_url, remote_url)
         self.assertIsNotNone(task.finished_at)
         self.assertEqual(task.upstream_elapsed_seconds, 180.0)
+        self.assertEqual(task.upstream_header_seconds, 159.0)
+        self.assertEqual(task.upstream_body_seconds, 20.5)
+        self.assertEqual(task.upstream_parse_seconds, 0.25)
+        self.assertIsNotNone(task.upstream_save_seconds)
+        self.assertLess(task.upstream_save_seconds, 1.0)
+        self.assertEqual(task.upstream_body_bytes, 15425302)
+        self.assertEqual(task.upstream_content_length, 15425302)
+        self.assertEqual(task.upstream_transfer_encoding, "chunked")
         self.assertEqual(task.upstream_response_format, "url")
         self.assertEqual(history.user_id, user_id)
         self.assertEqual(history.image_url, remote_url)
+        self.assertEqual(history.upstream_body_seconds, 20.5)
+        self.assertIsNotNone(history.upstream_save_seconds)
 
     async def test_remote_image_mirror_updates_task_and_history_to_local_url(self) -> None:
         remote_url = "https://image.example/generated.png"
@@ -342,7 +396,112 @@ class WorkerRecoveryTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("余额不足", task.error_message)
         self.assertEqual(user.monthly_quota_remaining, 3)
 
-    async def test_upstream_server_error_is_refunded_without_requeue(self) -> None:
+    async def test_usage_limit_is_refunded_without_requeue_and_writes_audit_fields(self) -> None:
+        usage_error = AIUsageLimitError(
+            '{"code":"USAGE_LIMIT_EXCEEDED","reason":"DAILY_LIMIT_EXCEEDED","message":"daily usage limit exceeded"}',
+            status_code=429,
+            request_id="req_daily_limit",
+            endpoint="/v1/images/generations",
+            request_quality="high",
+            request_size="2160x3840",
+            content_type="application/json",
+            elapsed_seconds=18.5,
+            header_seconds=18.3,
+            body_seconds=0.0,
+            body_bytes=188,
+            content_length=188,
+            detail="daily usage limit exceeded",
+        )
+        async with self.session_factory() as db:
+            user = User(username="usage-limit-user", hashed_password="x", monthly_quota_total=3, monthly_quota_remaining=2)
+            db.add(user)
+            await db.flush()
+            task = GenerationTask(
+                user_id=user.id,
+                prompt="large image",
+                quality="high",
+                size="2160x3840",
+                points_cost=1,
+                balance_source="quota",
+                max_retries=2,
+            )
+            db.add(task)
+            await db.commit()
+            task_id = task.id
+            user_id = user.id
+
+        with (
+            patch.object(
+                worker.AIClient,
+                "generate_with_metadata",
+                new=AsyncMock(side_effect=usage_error),
+            ),
+            patch.object(worker, "enqueue_generation_task", new=AsyncMock()) as enqueue,
+        ):
+            await worker.process_task(task_id)
+
+        enqueue.assert_not_awaited()
+
+        async with self.session_factory() as db:
+            task = await db.get(GenerationTask, task_id)
+            user = await db.get(User, user_id)
+
+        self.assertEqual(task.status, GenerationTaskStatus.REFUNDED)
+        self.assertEqual(task.retry_count, 1)
+        self.assertEqual(task.progress_stage, "failed")
+        self.assertIn("DAILY_LIMIT_EXCEEDED", task.error_message)
+        self.assertIn("request_id=req_daily_limit", task.error_message)
+        self.assertEqual(task.upstream_endpoint, "/v1/images/generations")
+        self.assertEqual(task.upstream_request_id, "req_daily_limit")
+        self.assertEqual(task.upstream_elapsed_seconds, 18.5)
+        self.assertEqual(task.upstream_header_seconds, 18.3)
+        self.assertEqual(task.upstream_body_bytes, 188)
+        self.assertEqual(task.upstream_content_length, 188)
+        self.assertEqual(user.monthly_quota_remaining, 3)
+
+    async def test_no_available_api_config_is_refunded_without_requeue(self) -> None:
+        message = "没有可用的数据库 API 通道，且已禁止回退到 .env API Key。"
+        async with self.session_factory() as db:
+            user = User(username="no-api-config-user", hashed_password="x", monthly_quota_total=3, monthly_quota_remaining=2)
+            db.add(user)
+            await db.flush()
+            task = GenerationTask(
+                user_id=user.id,
+                prompt="large image",
+                quality="high",
+                size="2160x3840",
+                points_cost=1,
+                balance_source="quota",
+                max_retries=2,
+            )
+            db.add(task)
+            await db.commit()
+            task_id = task.id
+            user_id = user.id
+
+        with (
+            patch.object(
+                worker.AIClient,
+                "generate_with_metadata",
+                new=AsyncMock(side_effect=AINoAvailableApiConfigError(message)),
+            ),
+            patch.object(worker, "enqueue_generation_task", new=AsyncMock()) as enqueue,
+        ):
+            await worker.process_task(task_id)
+
+        enqueue.assert_not_awaited()
+
+        async with self.session_factory() as db:
+            task = await db.get(GenerationTask, task_id)
+            user = await db.get(User, user_id)
+
+        self.assertEqual(task.status, GenerationTaskStatus.REFUNDED)
+        self.assertEqual(task.retry_count, 1)
+        self.assertEqual(task.progress_stage, "failed")
+        self.assertIn("没有可用", task.error_message)
+        self.assertEqual(user.monthly_quota_remaining, 3)
+
+    async def test_upstream_server_error_is_requeued_before_retry_limit(self) -> None:
         message = "上游生成服务暂时异常（HTTP 502），任务已退款，请稍后重试或切换 API 通道。"
         async with self.session_factory() as db:
             user = User(username="upstream-502-user", hashed_password="x", monthly_quota_total=3, monthly_quota_remaining=2)
@@ -372,6 +531,64 @@ class WorkerRecoveryTest(unittest.IsolatedAsyncioTestCase):
         ):
             await worker.process_task(task_id)
 
+        enqueue.assert_awaited_once_with(task_id)
+
+        async with self.session_factory() as db:
+            task = await db.get(GenerationTask, task_id)
+            user = await db.get(User, user_id)
+
+        self.assertEqual(task.status, GenerationTaskStatus.PENDING)
+        self.assertEqual(task.retry_count, 1)
+        self.assertEqual(task.progress_stage, "retrying")
+        self.assertIn("HTTP 502", task.error_message)
+        self.assertEqual(user.monthly_quota_remaining, 2)
+
+    async def test_structured_upstream_server_error_writes_audit_fields(self) -> None:
+        upstream_error = AIUpstreamServerError(
+            "上游生成服务暂时异常（HTTP 502），任务已退款，请稍后重试或切换 API 通道。",
+            status_code=502,
+            request_id="req_zilan_502",
+            endpoint="/v1/images/generations",
+            request_quality="",
+            request_size="3840x2160",
+            content_type="application/json; charset=utf-8",
+            elapsed_seconds=68.2,
+            header_seconds=67.8,
+            body_seconds=0.0,
+            body_bytes=308,
+            content_length=308,
+            transfer_encoding=None,
+            detail="bad gateway",
+        )
+        async with self.session_factory() as db:
+            user = User(username="upstream-audit-user", hashed_password="x", monthly_quota_total=3, monthly_quota_remaining=2)
+            db.add(user)
+            await db.flush()
+            task = GenerationTask(
+                user_id=user.id,
+                prompt="large image",
+                quality="high",
+                size="3840x2160",
+                points_cost=1,
+                balance_source="quota",
+                retry_count=2,
+                max_retries=2,
+            )
+            db.add(task)
+            await db.commit()
+            task_id = task.id
+            user_id = user.id
+
+        with (
+            patch.object(
+                worker.AIClient,
+                "generate_with_metadata",
+                new=AsyncMock(side_effect=upstream_error),
+            ),
+            patch.object(worker, "enqueue_generation_task", new=AsyncMock()) as enqueue,
+        ):
+            await worker.process_task(task_id)
+
         enqueue.assert_not_awaited()
 
         async with self.session_factory() as db:
@@ -379,9 +596,17 @@ class WorkerRecoveryTest(unittest.IsolatedAsyncioTestCase):
             user = await db.get(User, user_id)
 
         self.assertEqual(task.status, GenerationTaskStatus.REFUNDED)
-        self.assertEqual(task.retry_count, 1)
-        self.assertEqual(task.progress_stage, "failed")
-        self.assertIn("HTTP 502", task.error_message)
+        self.assertIn("request_id=req_zilan_502", task.error_message)
+        self.assertIn("size=3840x2160", task.error_message)
+        self.assertEqual(task.upstream_endpoint, "/v1/images/generations")
+        self.assertEqual(task.upstream_request_id, "req_zilan_502")
+        self.assertEqual(task.upstream_request_size, "3840x2160")
+        self.assertEqual(task.upstream_content_type, "application/json; charset=utf-8")
+        self.assertEqual(task.upstream_elapsed_seconds, 68.2)
+        self.assertEqual(task.upstream_header_seconds, 67.8)
+        self.assertEqual(task.upstream_body_seconds, 0.0)
+        self.assertEqual(task.upstream_body_bytes, 308)
+        self.assertEqual(task.upstream_content_length, 308)
         self.assertEqual(user.monthly_quota_remaining, 3)
 
 

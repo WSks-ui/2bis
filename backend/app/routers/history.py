@@ -76,6 +76,13 @@ async def list_history(
                 upstream_request_id=h.upstream_request_id,
                 upstream_content_type=h.upstream_content_type,
                 upstream_elapsed_seconds=h.upstream_elapsed_seconds,
+                upstream_header_seconds=h.upstream_header_seconds,
+                upstream_body_seconds=h.upstream_body_seconds,
+                upstream_parse_seconds=h.upstream_parse_seconds,
+                upstream_save_seconds=h.upstream_save_seconds,
+                upstream_body_bytes=h.upstream_body_bytes,
+                upstream_content_length=h.upstream_content_length,
+                upstream_transfer_encoding=h.upstream_transfer_encoding,
                 upstream_payload_length=h.upstream_payload_length,
                 created_at=h.created_at,
             )

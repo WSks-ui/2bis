@@ -39,6 +39,13 @@ def _sqlite_add_upstream_audit_columns(cursor, table_name: str, columns: set[str
         "upstream_request_id": "VARCHAR(120)",
         "upstream_content_type": "VARCHAR(120)",
         "upstream_elapsed_seconds": "FLOAT",
+        "upstream_header_seconds": "FLOAT",
+        "upstream_body_seconds": "FLOAT",
+        "upstream_parse_seconds": "FLOAT",
+        "upstream_save_seconds": "FLOAT",
+        "upstream_body_bytes": "INTEGER",
+        "upstream_content_length": "INTEGER",
+        "upstream_transfer_encoding": "VARCHAR(80)",
         "upstream_payload_length": "INTEGER",
     }
     for column_name, column_type in audit_columns.items():
@@ -87,6 +94,10 @@ if _is_sqlite:
                 cursor.execute("ALTER TABLE generation_tasks ADD COLUMN workflow_preset VARCHAR(80)")
             if "source_image_mime_type" not in columns:
                 cursor.execute("ALTER TABLE generation_tasks ADD COLUMN source_image_mime_type VARCHAR(50)")
+            if "source_image_paths" not in columns:
+                cursor.execute("ALTER TABLE generation_tasks ADD COLUMN source_image_paths TEXT")
+            if "source_image_mime_types" not in columns:
+                cursor.execute("ALTER TABLE generation_tasks ADD COLUMN source_image_mime_types TEXT")
             if "progress_stage" not in columns:
                 cursor.execute("ALTER TABLE generation_tasks ADD COLUMN progress_stage VARCHAR(40)")
             if "progress_message" not in columns:

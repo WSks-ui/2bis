@@ -1,3 +1,5 @@
+import json
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +14,8 @@ from app.services.task_queue import enqueue_generation_task
 from app.services.upload_storage import save_upload_file
 
 router = APIRouter(prefix="/edits", tags=["edits"])
+MAX_REFERENCE_IMAGES = 3
+IMAGE_TASK_MODES = {"ref2img", "edit"}
 
 
 def task_response(task: GenerationTask) -> GenerationTaskResponse:
@@ -35,6 +39,13 @@ def task_response(task: GenerationTask) -> GenerationTaskResponse:
         upstream_request_id=task.upstream_request_id,
         upstream_content_type=task.upstream_content_type,
         upstream_elapsed_seconds=task.upstream_elapsed_seconds,
+        upstream_header_seconds=task.upstream_header_seconds,
+        upstream_body_seconds=task.upstream_body_seconds,
+        upstream_parse_seconds=task.upstream_parse_seconds,
+        upstream_save_seconds=task.upstream_save_seconds,
+        upstream_body_bytes=task.upstream_body_bytes,
+        upstream_content_length=task.upstream_content_length,
+        upstream_transfer_encoding=task.upstream_transfer_encoding,
         upstream_payload_length=task.upstream_payload_length,
         progress_stage=task.progress_stage,
         progress_message=task.progress_message,
@@ -48,8 +59,9 @@ def task_response(task: GenerationTask) -> GenerationTaskResponse:
 
 @router.post("", response_model=GenerationTaskResponse)
 async def edit_image(
-    image: UploadFile = File(...),
+    image: list[UploadFile] = File(...),
     prompt: str = Form(..., min_length=1, max_length=2000),
+    mode: str = Form(default="edit", max_length=20),
     quality: str = Form(default="low"),
     size: str = Form(default="1024x1024"),
     workflow_type: str = Form(default="standard", max_length=40),
@@ -60,17 +72,33 @@ async def edit_image(
     if not prompt.strip():
         raise HTTPException(status_code=400, detail="Prompt cannot be empty")
 
-    image_bytes = await image.read()
-    if not image_bytes:
-        raise HTTPException(status_code=400, detail="Image file cannot be empty")
-    if len(image_bytes) > MAX_UPLOAD_SIZE:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Image too large (max {MAX_UPLOAD_SIZE // 1024 // 1024}MB)",
-        )
+    normalized_mode = mode.strip() or "edit"
+    if normalized_mode not in IMAGE_TASK_MODES:
+        raise HTTPException(status_code=400, detail="Unsupported image generation mode")
+    if not image:
+        raise HTTPException(status_code=400, detail="At least one image is required")
+    if len(image) > MAX_REFERENCE_IMAGES:
+        raise HTTPException(status_code=400, detail=f"最多支持上传 {MAX_REFERENCE_IMAGES} 张参考图")
+    if normalized_mode == "edit" and len(image) > 1:
+        raise HTTPException(status_code=400, detail="图片编辑模式仅支持上传 1 张原图")
+
+    validated_images: list[tuple[bytes, str, str | None]] = []
+    for upload in image:
+        image_bytes = await upload.read()
+        if not image_bytes:
+            raise HTTPException(status_code=400, detail="Image file cannot be empty")
+        if len(image_bytes) > MAX_UPLOAD_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Image too large (max {MAX_UPLOAD_SIZE // 1024 // 1024}MB)",
+            )
+        try:
+            mime_type = GenerationOptions.validate_upload_image(image_bytes, upload.content_type)
+        except GenerationOptionsError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        validated_images.append((image_bytes, mime_type, upload.filename))
 
     try:
-        source_image_mime_type = GenerationOptions.validate_upload_image(image_bytes, image.content_type)
         normalized_quality = GenerationOptions.normalize_quality(quality)
         normalized_size = GenerationOptions.normalize_size(size)
         normalized_workflow = QuotaManager.normalize_workflow_type(workflow_type)
@@ -84,10 +112,15 @@ async def edit_image(
     except (GenerationOptionsError, QuotaError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    source_image_path = await save_upload_file(image_bytes, current_user.id, image.filename)
+    source_image_paths: list[str] = []
+    source_image_mime_types: list[str] = []
+    for image_bytes, mime_type, filename in validated_images:
+        source_image_paths.append(await save_upload_file(image_bytes, current_user.id, filename))
+        source_image_mime_types.append(mime_type)
+
     task = GenerationTask(
         user_id=current_user.id,
-        mode="edit",
+        mode=normalized_mode,
         prompt=prompt.strip(),
         quality=normalized_quality,
         size=normalized_size,
@@ -96,8 +129,10 @@ async def edit_image(
         workflow_type=deduction.workflow_type,
         workflow_cost=deduction.workflow_cost,
         workflow_preset=normalized_workflow_preset,
-        source_image_path=source_image_path,
-        source_image_mime_type=source_image_mime_type,
+        source_image_path=source_image_paths[0],
+        source_image_mime_type=source_image_mime_types[0],
+        source_image_paths=json.dumps(source_image_paths, ensure_ascii=False),
+        source_image_mime_types=json.dumps(source_image_mime_types, ensure_ascii=False),
         max_retries=GENERATION_MAX_RETRIES,
     )
     db.add(task)

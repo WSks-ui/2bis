@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import time
 from datetime import datetime, timedelta
@@ -19,11 +20,13 @@ from app.services.ai_client import (
     AIClient,
     AIImageResult,
     AIInsufficientCreditsError,
+    AINoAvailableApiConfigError,
     AIResponseBodyTimeoutError,
     AIResponsePayloadError,
     AIResponseInterruptedError,
     AIUpstreamServerError,
     AIUnsupportedParameterError,
+    AIUsageLimitError,
     AITimeoutError,
     close_client,
     get_client,
@@ -50,7 +53,54 @@ def apply_upstream_audit(target, result: AIImageResult) -> None:
     target.upstream_request_id = result.response_request_id
     target.upstream_content_type = result.response_content_type
     target.upstream_elapsed_seconds = round(result.elapsed_seconds, 3)
+    target.upstream_header_seconds = round(result.header_seconds, 3) if result.header_seconds is not None else None
+    target.upstream_body_seconds = round(result.body_seconds, 3) if result.body_seconds is not None else None
+    target.upstream_parse_seconds = round(result.parse_seconds, 3) if result.parse_seconds is not None else None
+    target.upstream_body_bytes = result.body_bytes
+    target.upstream_content_length = result.content_length
+    target.upstream_transfer_encoding = result.transfer_encoding
     target.upstream_payload_length = result.payload_length
+
+
+def apply_upstream_error_audit(target, exc: Exception) -> None:
+    if not isinstance(exc, (AIUpstreamServerError, AIUsageLimitError)):
+        return
+
+    target.upstream_model = target.upstream_model or "gpt-image-2"
+    target.upstream_endpoint = exc.endpoint
+    target.upstream_request_quality = exc.request_quality
+    target.upstream_request_size = exc.request_size
+    target.upstream_response_format = exc.response_format
+    target.upstream_request_id = exc.request_id
+    target.upstream_content_type = exc.content_type
+    if exc.elapsed_seconds is not None:
+        target.upstream_elapsed_seconds = round(exc.elapsed_seconds, 3)
+    if exc.header_seconds is not None:
+        target.upstream_header_seconds = round(exc.header_seconds, 3)
+    if exc.body_seconds is not None:
+        target.upstream_body_seconds = round(exc.body_seconds, 3)
+    target.upstream_body_bytes = exc.body_bytes
+    target.upstream_content_length = exc.content_length
+    target.upstream_transfer_encoding = exc.transfer_encoding
+
+
+def task_error_message(exc: Exception) -> str:
+    if not isinstance(exc, (AIUpstreamServerError, AIUsageLimitError)):
+        return str(exc)
+
+    parts = [str(exc)]
+    detail_parts = []
+    if exc.request_size:
+        detail_parts.append(f"size={exc.request_size}")
+    if exc.request_quality:
+        detail_parts.append(f"quality={exc.request_quality}")
+    if exc.request_id:
+        detail_parts.append(f"request_id={exc.request_id}")
+    if exc.detail:
+        detail_parts.append(f"upstream={exc.detail}")
+    if detail_parts:
+        parts.append("；".join(detail_parts))
+    return " ".join(parts)
 
 
 async def update_task_progress(
@@ -92,6 +142,34 @@ def receiving_progress_message(received_bytes: int, total_bytes: int | None, ela
             f"{format_bytes(total_bytes)}，平均 {format_bytes(int(speed))}/s"
         )
     return f"正在接收图片数据：{format_bytes(received_bytes)}，平均 {format_bytes(int(speed))}/s"
+
+
+def parse_json_string_list(value: str | None) -> list[str]:
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [str(item) for item in parsed if item]
+
+
+async def read_task_source_images(task: GenerationTask) -> list[tuple[bytes, str, str]]:
+    paths = parse_json_string_list(task.source_image_paths)
+    mime_types = parse_json_string_list(task.source_image_mime_types)
+    if not paths and task.source_image_path:
+        paths = [task.source_image_path]
+    if not mime_types and task.source_image_mime_type:
+        mime_types = [task.source_image_mime_type]
+
+    images: list[tuple[bytes, str, str]] = []
+    for index, path in enumerate(paths):
+        mime_type = mime_types[index] if index < len(mime_types) else "image/png"
+        filename = f"image-{index + 1}.{GenerationOptions.extension_for_mime(mime_type)}"
+        images.append((await read_upload_file(path), filename, mime_type))
+    return images
 
 
 def schedule_remote_image_mirror(task_id: int, user_id: int, remote_url: str | None) -> None:
@@ -245,17 +323,15 @@ async def process_task(task_id: int) -> None:
                 timeout=GENERATION_TASK_TIMEOUT,
             )
         else:
-            image_bytes = await read_upload_file(task.source_image_path)
-            source_mime_type = task.source_image_mime_type or "image/png"
-            source_filename = f"image.{GenerationOptions.extension_for_mime(source_mime_type)}"
+            source_images = await read_task_source_images(task)
+            if not source_images:
+                raise ValueError("No source image found for image generation task")
             ai_result = await asyncio.wait_for(
-                AIClient.edit_with_metadata(
-                    image_bytes,
+                AIClient.edit_multiple_with_metadata(
+                    source_images,
                     task.prompt,
                     task.quality,
                     task.size,
-                    source_filename,
-                    source_mime_type,
                     on_response_headers=mark_response_headers_received,
                     on_body_progress=mark_body_progress,
                 ),
@@ -299,6 +375,7 @@ async def process_task(task_id: int) -> None:
             task.locked_at = None
             task.finished_at = datetime.utcnow()
             apply_upstream_audit(task, ai_result)
+            task.upstream_save_seconds = round(save_seconds, 3)
             history_prompt = f"[图生图] {task.prompt}" if task.mode != "text2img" else task.prompt
             history = GenerateHistory(
                 user_id=task.user_id,
@@ -314,6 +391,7 @@ async def process_task(task_id: int) -> None:
                 created_at=task.finished_at,
             )
             apply_upstream_audit(history, ai_result)
+            history.upstream_save_seconds = round(save_seconds, 3)
             db.add(history)
             await db.commit()
             total_seconds = time.monotonic() - task_started_at
@@ -328,7 +406,8 @@ async def process_task(task_id: int) -> None:
                 return
 
             task.retry_count += 1
-            task.error_message = str(e)
+            task.error_message = task_error_message(e)
+            apply_upstream_error_audit(task, e)
             task.progress_stage = "retrying"
             task.progress_message = "生成失败，正在准备重试。"
             task.locked_at = None
@@ -341,8 +420,9 @@ async def process_task(task_id: int) -> None:
                     AIResponseBodyTimeoutError,
                     AIAuthenticationError,
                     AIInsufficientCreditsError,
+                    AIUsageLimitError,
+                    AINoAvailableApiConfigError,
                     AIUnsupportedParameterError,
-                    AIUpstreamServerError,
                     AITimeoutError,
                 ),
             ) and task.retry_count <= task.max_retries

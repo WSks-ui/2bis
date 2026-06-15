@@ -29,6 +29,7 @@ from app.config import (
 )
 from app.services.api_key_manager import (
     ActiveApiConfig,
+    NoAvailableApiConfigError,
     get_active_api_config,
     invalidate_active_api_config_cache,
     mark_api_config_failed,
@@ -41,10 +42,16 @@ MODEL_NAME = "gpt-image-2"
 MAX_CONCURRENT = AI_MAX_CONCURRENT
 MAX_RETRIES = 2
 IMAGE_DOWNLOAD_RETRIES = 2
-RESPONSE_FORMAT_UNSUPPORTED_HOSTS = {"aiartmirror.com", "www.aiartmirror.com"}
+RESPONSE_FORMAT_UNSUPPORTED_HOSTS = {
+    "aiartmirror.com",
+    "api.zilan520.shop",
+    "www.aiartmirror.com",
+}
+QUALITY_UNSUPPORTED_HOSTS: set[str] = set()
 MAX_API_CONFIG_SWITCHES = 2
 RESPONSE_BODY_PROGRESS_INTERVAL_SECONDS = 30.0
 RESPONSE_BODY_PROGRESS_BYTES = 5 * 1024 * 1024
+MAX_UPSTREAM_ERROR_DETAIL_LENGTH = 360
 
 BodyProgressCallback = Callable[[int, int | None, float], Awaitable[None]]
 
@@ -103,6 +110,9 @@ class AIImageResult:
     header_seconds: float | None = None
     body_seconds: float | None = None
     parse_seconds: float | None = None
+    body_bytes: int | None = None
+    content_length: int | None = None
+    transfer_encoding: str | None = None
 
     @property
     def display_url(self) -> str:
@@ -209,15 +219,46 @@ class AIClient:
         on_response_headers: Callable[[httpx.Response], Awaitable[None]] | None = None,
         on_body_progress: BodyProgressCallback | None = None,
     ) -> AIImageResult:
+        return await AIClient.edit_multiple_with_metadata(
+            [(image_bytes, filename, mime_type)],
+            prompt,
+            quality,
+            size,
+            on_response_headers=on_response_headers,
+            on_body_progress=on_body_progress,
+        )
+
+    @staticmethod
+    async def edit_multiple_with_metadata(
+        images: list[tuple[bytes, str, str]],
+        prompt: str,
+        quality: str,
+        size: str,
+        on_response_headers: Callable[[httpx.Response], Awaitable[None]] | None = None,
+        on_body_progress: BodyProgressCallback | None = None,
+    ) -> AIImageResult:
+        if not images:
+            raise ValueError("At least one source image is required")
+
         quality_level = QUALITY_LEVEL_MAP.get(quality, "low")
-        files = {"image": (filename, image_bytes, AIClient._normalize_mime_type(mime_type) or "image/png")}
+        files = [
+            (
+                "image",
+                (
+                    filename,
+                    image_bytes,
+                    AIClient._normalize_mime_type(mime_type) or "image/png",
+                ),
+            )
+            for image_bytes, filename, mime_type in images
+        ]
         form_data = {"model": MODEL_NAME, "prompt": prompt, "n": "1", "size": size, "quality": quality_level}
         return await AIClient._call_api_with_key_failover(
             endpoint="/images/edits",
             payload=form_data,
             is_json=False,
             files=files,
-            log_label=f"[AI EDIT REQUEST] quality={quality_level} | size={size} | file={filename}",
+            log_label=f"[AI EDIT REQUEST] quality={quality_level} | size={size} | files={len(files)}",
             on_response_headers=on_response_headers,
             on_body_progress=on_body_progress,
         )
@@ -239,7 +280,12 @@ class AIClient:
         attempted_config_ids: set[int | None] = set()
         last_error: Exception | None = None
         for switch_index in range(MAX_API_CONFIG_SWITCHES + 1):
-            api_config = await get_active_api_config(force_refresh=switch_index > 0)
+            try:
+                api_config = await get_active_api_config(force_refresh=switch_index > 0)
+            except NoAvailableApiConfigError as exc:
+                if last_error is not None:
+                    raise last_error
+                raise AINoAvailableApiConfigError(str(exc)) from exc
             if api_config.config_id in attempted_config_ids:
                 break
             attempted_config_ids.add(api_config.config_id)
@@ -283,7 +329,7 @@ class AIClient:
 
         if last_error is not None:
             raise last_error
-        raise Exception("No available AI API key configuration")
+        raise AINoAvailableApiConfigError("No available AI API key configuration")
 
     @staticmethod
     async def _call_api_with_metadata(
@@ -306,7 +352,7 @@ class AIClient:
             for attempt in range(1 + AI_RATE_LIMIT_MAX_RETRIES):
                 try:
                     await AIClient._wait_for_request_slot()
-                    response, header_seconds, body_seconds = await AIClient._post_and_read_response(
+                    response, header_seconds, body_seconds, body_bytes = await AIClient._post_and_read_response(
                         client=client,
                         url=url,
                         payload=payload,
@@ -316,7 +362,15 @@ class AIClient:
                         on_response_headers=on_response_headers,
                         on_body_progress=on_body_progress,
                     )
-                    AIClient._handle_response(response, url)
+                    AIClient._handle_response(
+                        response,
+                        url,
+                        payload=payload,
+                        elapsed_seconds=time.monotonic() - call_started_at,
+                        header_seconds=header_seconds,
+                        body_seconds=body_seconds,
+                        body_bytes=body_bytes,
+                    )
                     parse_started_at = time.monotonic()
                     data_url, image_url = await AIClient._extract_image_result_with_timeout(response, client)
                     parse_seconds = time.monotonic() - parse_started_at
@@ -350,6 +404,9 @@ class AIClient:
                         header_seconds=header_seconds,
                         body_seconds=body_seconds,
                         parse_seconds=parse_seconds,
+                        body_bytes=body_bytes,
+                        content_length=AIClient._parse_content_length(response.headers.get("content-length")),
+                        transfer_encoding=response.headers.get("transfer-encoding"),
                         payload_length=len(image_url or data_url),
                     )
 
@@ -419,7 +476,7 @@ class AIClient:
                     raise Exception(f"Cannot connect to AI API: {e}")
 
                 except httpx.HTTPStatusError as e:
-                    AIClient._handle_response(e.response, url)
+                    AIClient._handle_response(e.response, url, payload=payload)
                     raise
 
                 except Exception as e:
@@ -437,7 +494,7 @@ class AIClient:
         auth_token: str,
         on_response_headers: Callable[[httpx.Response], Awaitable[None]] | None = None,
         on_body_progress: BodyProgressCallback | None = None,
-    ) -> tuple[httpx.Response, float, float]:
+    ) -> tuple[httpx.Response, float, float, int]:
         request_kwargs = (
             {"json": payload}
             if is_json
@@ -473,7 +530,7 @@ class AIClient:
                 body_seconds,
                 time.monotonic() - request_started_at,
             )
-            return response, header_seconds, body_seconds
+            return response, header_seconds, body_seconds, body_bytes
 
     @staticmethod
     async def _read_response_body_with_timeout(
@@ -683,13 +740,20 @@ class AIClient:
 
     @staticmethod
     def _apply_provider_payload_options(payload: dict, api_config: ActiveApiConfig | None = None) -> None:
-        if api_config is not None and not api_config.send_quality:
+        if api_config is None:
+            return
+        if not api_config.send_quality or not AIClient._supports_quality_parameter(api_config.api_url):
             payload.pop("quality", None)
 
     @staticmethod
     def _supports_response_format(api_url: str) -> bool:
         host = (urlparse(api_url).hostname or "").lower()
         return host not in RESPONSE_FORMAT_UNSUPPORTED_HOSTS
+
+    @staticmethod
+    def _supports_quality_parameter(api_url: str) -> bool:
+        host = (urlparse(api_url).hostname or "").lower()
+        return host not in QUALITY_UNSUPPORTED_HOSTS
 
     @staticmethod
     def _remove_response_format(payload: dict) -> bool:
@@ -728,7 +792,15 @@ class AIClient:
         return min(max(base_delay + jitter, 0.1), 30.0)
 
     @staticmethod
-    def _handle_response(response, url):
+    def _handle_response(
+        response,
+        url,
+        payload: dict | None = None,
+        elapsed_seconds: float | None = None,
+        header_seconds: float | None = None,
+        body_seconds: float | None = None,
+        body_bytes: int | None = None,
+    ):
         logger.info(f"[AI RESPONSE] status={response.status_code}")
         if response.status_code != 200:
             detail = response.text
@@ -737,25 +809,84 @@ class AIClient:
                 detail = err.get("error", {}).get("message", detail)
             except Exception:
                 pass
+            safe_detail = AIClient._sanitize_upstream_detail(detail)
+            if response.status_code == 429 and AIClient._is_usage_limit_error(safe_detail):
+                logger.warning("[AI USAGE LIMIT] %s", safe_detail)
+                raise AIUsageLimitError(
+                    safe_detail,
+                    retry_after_seconds=None,
+                    status_code=response.status_code,
+                    request_id=AIClient._extract_request_id(response),
+                    endpoint=AIClient._endpoint_from_url(url),
+                    request_quality=str((payload or {}).get("quality") or ""),
+                    request_size=str((payload or {}).get("size") or ""),
+                    response_format=(payload or {}).get("response_format") or None,
+                    content_type=response.headers.get("content-type"),
+                    elapsed_seconds=elapsed_seconds,
+                    header_seconds=header_seconds,
+                    body_seconds=body_seconds,
+                    body_bytes=body_bytes,
+                    content_length=AIClient._parse_content_length(response.headers.get("content-length")),
+                    transfer_encoding=response.headers.get("transfer-encoding"),
+                    detail=safe_detail,
+                )
             if response.status_code == 429:
-                retry_after = AIClient._parse_retry_after(response, detail)
-                logger.warning(f"[AI RATE LIMIT] {detail}")
-                raise AIRateLimitError(detail, retry_after)
-            if response.status_code == 402 and AIClient._is_insufficient_credits_error(detail):
+                retry_after = AIClient._parse_retry_after(response, safe_detail)
+                logger.warning(f"[AI RATE LIMIT] {safe_detail}")
+                raise AIRateLimitError(
+                    safe_detail,
+                    retry_after,
+                    status_code=response.status_code,
+                    request_id=AIClient._extract_request_id(response),
+                    endpoint=AIClient._endpoint_from_url(url),
+                    request_quality=str((payload or {}).get("quality") or ""),
+                    request_size=str((payload or {}).get("size") or ""),
+                    response_format=(payload or {}).get("response_format") or None,
+                    content_type=response.headers.get("content-type"),
+                    elapsed_seconds=elapsed_seconds,
+                    header_seconds=header_seconds,
+                    body_seconds=body_seconds,
+                    body_bytes=body_bytes,
+                    content_length=AIClient._parse_content_length(response.headers.get("content-length")),
+                    transfer_encoding=response.headers.get("transfer-encoding"),
+                    detail=safe_detail,
+                )
+            if response.status_code == 402 and AIClient._is_insufficient_credits_error(safe_detail):
                 raise AIInsufficientCreditsError("上游 API Key 余额不足，请在管理员控制台更换或充值 API Key。")
             if response.status_code in {401, 403}:
                 raise AIAuthenticationError("上游 API Key 认证失败，请在管理员控制台更换或检查 API Key。")
-            if response.status_code == 400 and AIClient._is_unsupported_response_format_error(detail):
+            if response.status_code == 400 and AIClient._is_unsupported_response_format_error(safe_detail):
                 raise AIUnsupportedParameterError(
                     "上游图片接口不支持 response_format 参数，任务已停止并退款；"
                     "当前平台无法通过 URL 响应规避大图传输中断，请关闭 AI_IMAGE_RESPONSE_FORMAT 或更换支持 URL 返回的接口。"
                 )
             if 500 <= response.status_code <= 599:
                 raise AIUpstreamServerError(
-                    f"上游生成服务暂时异常（HTTP {response.status_code}），任务已退款，请稍后重试或切换 API 通道。"
+                    f"上游生成服务暂时异常（HTTP {response.status_code}），可重试或切换 API 通道。",
+                    status_code=response.status_code,
+                    request_id=AIClient._extract_request_id(response),
+                    endpoint=AIClient._endpoint_from_url(url),
+                    request_quality=str((payload or {}).get("quality") or ""),
+                    request_size=str((payload or {}).get("size") or ""),
+                    response_format=(payload or {}).get("response_format") or None,
+                    content_type=response.headers.get("content-type"),
+                    elapsed_seconds=elapsed_seconds,
+                    header_seconds=header_seconds,
+                    body_seconds=body_seconds,
+                    body_bytes=body_bytes,
+                    content_length=AIClient._parse_content_length(response.headers.get("content-length")),
+                    transfer_encoding=response.headers.get("transfer-encoding"),
+                    detail=safe_detail,
                 )
-            logger.error(f"[AI ERROR] {response.status_code}: {detail}")
-            raise Exception(f"AI API error ({response.status_code}): {detail}")
+            logger.error(f"[AI ERROR] {response.status_code}: {safe_detail}")
+            raise Exception(f"AI API error ({response.status_code}): {safe_detail}")
+
+    @staticmethod
+    def _sanitize_upstream_detail(detail: str | None) -> str:
+        text = str(detail or "").strip()
+        text = re.sub(r"sk-[A-Za-z0-9_-]{8,}", "sk-***", text)
+        text = re.sub(r"tk_[A-Za-z0-9_-]{6,}", "tk_***", text)
+        return text[:MAX_UPSTREAM_ERROR_DETAIL_LENGTH]
 
     @staticmethod
     def _is_unsupported_response_format_error(detail: str) -> bool:
@@ -783,6 +914,21 @@ class AIClient:
             "no remaining credits" in normalized
             or ("insufficient" in normalized and "credit" in normalized)
         )
+
+    @staticmethod
+    def _is_usage_limit_error(detail: str) -> bool:
+        normalized = detail.lower()
+        markers = (
+            "usage_limit_exceeded",
+            "daily_limit_exceeded",
+            "monthly_limit_exceeded",
+            "quota_exceeded",
+            "billing_hard_limit",
+            "daily usage limit exceeded",
+            "usage limit exceeded",
+            "quota exceeded",
+        )
+        return any(marker in normalized for marker in markers)
 
     @staticmethod
     def _parse_retry_after(response: httpx.Response, detail: str) -> float | None:
@@ -981,6 +1127,10 @@ class AIResponseBodyTimeoutError(Exception):
     pass
 
 
+class AINoAvailableApiConfigError(Exception):
+    pass
+
+
 class AIKeyTerminalError(Exception):
     pass
 
@@ -994,9 +1144,81 @@ class AIAuthenticationError(AIKeyTerminalError):
 
 
 class AIRateLimitError(Exception):
-    def __init__(self, message: str, retry_after_seconds: float | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        retry_after_seconds: float | None = None,
+        *,
+        status_code: int | None = None,
+        request_id: str | None = None,
+        endpoint: str | None = None,
+        request_quality: str | None = None,
+        request_size: str | None = None,
+        response_format: str | None = None,
+        content_type: str | None = None,
+        elapsed_seconds: float | None = None,
+        header_seconds: float | None = None,
+        body_seconds: float | None = None,
+        body_bytes: int | None = None,
+        content_length: int | None = None,
+        transfer_encoding: str | None = None,
+        detail: str | None = None,
+    ) -> None:
         super().__init__(message)
         self.retry_after_seconds = retry_after_seconds
+        self.status_code = status_code
+        self.request_id = request_id
+        self.endpoint = endpoint
+        self.request_quality = request_quality
+        self.request_size = request_size
+        self.response_format = response_format
+        self.content_type = content_type
+        self.elapsed_seconds = elapsed_seconds
+        self.header_seconds = header_seconds
+        self.body_seconds = body_seconds
+        self.body_bytes = body_bytes
+        self.content_length = content_length
+        self.transfer_encoding = transfer_encoding
+        self.detail = detail
+
+
+class AIUsageLimitError(AIKeyTerminalError):
+    def __init__(
+        self,
+        message: str,
+        retry_after_seconds: float | None = None,
+        *,
+        status_code: int | None = None,
+        request_id: str | None = None,
+        endpoint: str | None = None,
+        request_quality: str | None = None,
+        request_size: str | None = None,
+        response_format: str | None = None,
+        content_type: str | None = None,
+        elapsed_seconds: float | None = None,
+        header_seconds: float | None = None,
+        body_seconds: float | None = None,
+        body_bytes: int | None = None,
+        content_length: int | None = None,
+        transfer_encoding: str | None = None,
+        detail: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
+        self.status_code = status_code
+        self.request_id = request_id
+        self.endpoint = endpoint
+        self.request_quality = request_quality
+        self.request_size = request_size
+        self.response_format = response_format
+        self.content_type = content_type
+        self.elapsed_seconds = elapsed_seconds
+        self.header_seconds = header_seconds
+        self.body_seconds = body_seconds
+        self.body_bytes = body_bytes
+        self.content_length = content_length
+        self.transfer_encoding = transfer_encoding
+        self.detail = detail
 
 
 class AIUnsupportedParameterError(Exception):
@@ -1004,4 +1226,37 @@ class AIUnsupportedParameterError(Exception):
 
 
 class AIUpstreamServerError(Exception):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        request_id: str | None = None,
+        endpoint: str | None = None,
+        request_quality: str | None = None,
+        request_size: str | None = None,
+        response_format: str | None = None,
+        content_type: str | None = None,
+        elapsed_seconds: float | None = None,
+        header_seconds: float | None = None,
+        body_seconds: float | None = None,
+        body_bytes: int | None = None,
+        content_length: int | None = None,
+        transfer_encoding: str | None = None,
+        detail: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.request_id = request_id
+        self.endpoint = endpoint
+        self.request_quality = request_quality
+        self.request_size = request_size
+        self.response_format = response_format
+        self.content_type = content_type
+        self.elapsed_seconds = elapsed_seconds
+        self.header_seconds = header_seconds
+        self.body_seconds = body_seconds
+        self.body_bytes = body_bytes
+        self.content_length = content_length
+        self.transfer_encoding = transfer_encoding
+        self.detail = detail

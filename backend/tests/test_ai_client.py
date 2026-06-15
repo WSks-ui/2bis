@@ -8,14 +8,16 @@ import httpx
 from app.services.ai_client import (
     AIClient,
     AIInsufficientCreditsError,
+    AINoAvailableApiConfigError,
     AIResponseBodyTimeoutError,
     AIResponseInterruptedError,
     AIResponsePayloadError,
     AIUpstreamServerError,
+    AIUsageLimitError,
     AIRateLimitError,
     AIUnsupportedParameterError,
 )
-from app.services.api_key_manager import ActiveApiConfig
+from app.services.api_key_manager import ActiveApiConfig, NoAvailableApiConfigError
 
 
 PNG_BYTES = (
@@ -224,6 +226,16 @@ class AIClientResponseTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(seen_auth, "Bearer runtime-key")
 
+    async def test_generate_reports_no_available_api_config_before_http_request(self) -> None:
+        with patch(
+            "app.services.ai_client.get_active_api_config",
+            new=AsyncMock(side_effect=NoAvailableApiConfigError("no runtime channel")),
+        ):
+            with self.assertRaises(AINoAvailableApiConfigError) as ctx:
+                await AIClient.generate_with_metadata("prompt text", "low", "1024x1024")
+
+        self.assertIn("no runtime channel", str(ctx.exception))
+
     async def test_aiartmirror_does_not_request_response_format_even_when_configured(self) -> None:
         seen_payload = {}
 
@@ -275,8 +287,48 @@ class AIClientResponseTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("quality", seen_payload)
         self.assertEqual(result.request_quality, "")
 
-    async def test_5xx_marks_key_failed_and_returns_sanitized_error(self) -> None:
+    async def test_zilan_sends_quality_but_omits_response_format(self) -> None:
+        seen_payload = {}
+
         def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal seen_payload
+            seen_payload = json.loads(request.read().decode("utf-8"))
+            return httpx.Response(
+                200,
+                json={"data": [{"b64_json": base64.b64encode(PNG_BYTES).decode("ascii")}]},
+            )
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            with (
+                patch("app.services.ai_client.get_client", new=AsyncMock(return_value=client)),
+                patch.object(AIClient, "_wait_for_request_slot", new=AsyncMock()),
+                patch(
+                    "app.services.ai_client.get_active_api_config",
+                    new=AsyncMock(
+                        return_value=self.api_config(
+                            "https://api.zilan520.shop/v1",
+                            response_format="url",
+                            send_quality=True,
+                        )
+                    ),
+                ),
+            ):
+                result = await AIClient.generate_with_metadata("prompt text", "high", "2160x3840")
+
+        self.assertEqual(seen_payload["model"], "gpt-image-2")
+        self.assertEqual(seen_payload["size"], "2160x3840")
+        self.assertEqual(seen_payload["n"], 1)
+        self.assertEqual(seen_payload["quality"], "high")
+        self.assertNotIn("response_format", seen_payload)
+        self.assertEqual(result.request_quality, "high")
+        self.assertIsNone(result.request_response_format)
+
+    async def test_5xx_marks_key_failed_and_returns_sanitized_error(self) -> None:
+        seen_payload = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal seen_payload
+            seen_payload = json.loads(request.read().decode("utf-8"))
             return httpx.Response(
                 502,
                 json={
@@ -284,6 +336,7 @@ class AIClientResponseTest(unittest.IsolatedAsyncioTestCase):
                         "message": "An error occurred. Include request ID secret-request-id."
                     }
                 },
+                headers={"x-request-id": "req_502"},
             )
 
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
@@ -301,6 +354,10 @@ class AIClientResponseTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("HTTP 502", str(ctx.exception))
         self.assertNotIn("secret-request-id", str(ctx.exception))
+        self.assertEqual(ctx.exception.status_code, 502)
+        self.assertEqual(ctx.exception.request_id, "req_502")
+        self.assertEqual(ctx.exception.endpoint, "/v1/images/generations")
+        self.assertEqual(ctx.exception.request_size, seen_payload["size"])
         mark_failed.assert_awaited_once()
 
     async def test_remote_protocol_error_is_reported_as_response_interrupted(self) -> None:
@@ -448,6 +505,101 @@ class AIClientResponseTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(data_url.startswith("data:image/png;base64,"))
         self.assertEqual(calls, 2)
 
+    def test_usage_limit_429_is_terminal_key_error_with_audit_metadata(self) -> None:
+        response = httpx.Response(
+            429,
+            headers={
+                "content-type": "application/json",
+                "content-length": "128",
+                "x-request-id": "req_usage_limit",
+            },
+            json={
+                "error": {
+                    "message": (
+                        '{"code":"USAGE_LIMIT_EXCEEDED",'
+                        '"reason":"DAILY_LIMIT_EXCEEDED",'
+                        '"message":"daily usage limit exceeded"}'
+                    )
+                }
+            },
+        )
+
+        with self.assertRaises(AIUsageLimitError) as ctx:
+            AIClient._handle_response(
+                response,
+                "https://api.example/v1/images/generations",
+                payload={"quality": "high", "size": "2160x3840"},
+                elapsed_seconds=12.3,
+                header_seconds=12.0,
+                body_seconds=0.1,
+                body_bytes=128,
+            )
+
+        self.assertIn("USAGE_LIMIT_EXCEEDED", str(ctx.exception))
+        self.assertEqual(ctx.exception.status_code, 429)
+        self.assertEqual(ctx.exception.request_id, "req_usage_limit")
+        self.assertEqual(ctx.exception.request_quality, "high")
+        self.assertEqual(ctx.exception.request_size, "2160x3840")
+        self.assertEqual(ctx.exception.elapsed_seconds, 12.3)
+        self.assertEqual(ctx.exception.header_seconds, 12.0)
+        self.assertEqual(ctx.exception.body_bytes, 128)
+
+    async def test_usage_limit_fails_over_without_rate_limit_retries(self) -> None:
+        calls = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request.headers.get("authorization", ""))
+            if len(calls) == 1:
+                return httpx.Response(
+                    429,
+                    json={
+                        "error": {
+                            "message": (
+                                '{"code":"USAGE_LIMIT_EXCEEDED",'
+                                '"reason":"DAILY_LIMIT_EXCEEDED",'
+                                '"message":"daily usage limit exceeded"}'
+                            )
+                        }
+                    },
+                )
+            return httpx.Response(
+                200,
+                json={"data": [{"b64_json": base64.b64encode(PNG_BYTES).decode("ascii")}]},
+            )
+
+        primary = ActiveApiConfig(
+            api_url="https://api.example/v1",
+            api_key="primary-key",
+            response_format=None,
+            config_id=1,
+            key_mask="primary",
+        )
+        backup = ActiveApiConfig(
+            api_url="https://api.example/v1",
+            api_key="backup-key",
+            response_format=None,
+            config_id=2,
+            key_mask="backup",
+        )
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            with (
+                patch("app.services.ai_client.get_client", new=AsyncMock(return_value=client)),
+                patch("app.services.ai_client.asyncio.sleep", new=AsyncMock()) as sleep_mock,
+                patch.object(AIClient, "_wait_for_request_slot", new=AsyncMock()),
+                patch("app.services.ai_client.get_active_api_config", new=AsyncMock(side_effect=[primary, backup])),
+                patch("app.services.ai_client.mark_api_config_failed", new=AsyncMock()) as mark_failed,
+                patch("app.services.ai_client.invalidate_active_api_config_cache"),
+                patch("app.services.ai_client.touch_api_config_used", new=AsyncMock()),
+            ):
+                result = await AIClient.generate_with_metadata("prompt text", "low", "1024x1024")
+
+        self.assertTrue(result.data_url.startswith("data:image/png;base64,"))
+        self.assertEqual(calls, ["Bearer primary-key", "Bearer backup-key"])
+        sleep_mock.assert_not_awaited()
+        mark_failed.assert_awaited_once()
+        self.assertTrue(mark_failed.await_args.kwargs["terminal"])
+
     async def test_rejects_unsupported_response_format_without_fallback(self) -> None:
         calls = 0
 
@@ -555,6 +707,45 @@ class AIClientResponseTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(data_url.startswith("data:image/png;base64,"))
         self.assertIn(b'filename="image.jpg"', seen_body)
         self.assertIn(b"Content-Type: image/jpeg", seen_body)
+
+    async def test_edit_sends_multiple_reference_images(self) -> None:
+        seen_body = b""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal seen_body
+            seen_body = request.read()
+            return httpx.Response(
+                200,
+                json={"data": [{"b64_json": base64.b64encode(PNG_BYTES).decode("ascii")}]},
+            )
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            with (
+                patch("app.services.ai_client.get_client", new=AsyncMock(return_value=client)),
+                patch.object(AIClient, "_wait_for_request_slot", new=AsyncMock()),
+                patch(
+                    "app.services.ai_client.get_active_api_config",
+                    new=AsyncMock(return_value=self.api_config()),
+                ),
+            ):
+                result = await AIClient.edit_multiple_with_metadata(
+                    [
+                        (PNG_BYTES, "image-1.png", "image/png"),
+                        (b"\xff\xd8\xffjpeg", "image-2.jpg", "image/jpeg"),
+                        (b"RIFFxxxxWEBPwebp", "image-3.webp", "image/webp"),
+                    ],
+                    "reference prompt",
+                    "low",
+                    "1024x1024",
+                )
+
+        self.assertTrue(result.data_url.startswith("data:image/png;base64,"))
+        self.assertEqual(seen_body.count(b'name="image"'), 3)
+        self.assertIn(b'filename="image-1.png"', seen_body)
+        self.assertIn(b'filename="image-2.jpg"', seen_body)
+        self.assertIn(b'filename="image-3.webp"', seen_body)
+        self.assertIn(b"Content-Type: image/jpeg", seen_body)
+        self.assertIn(b"Content-Type: image/webp", seen_body)
 
     async def test_generate_returns_safe_request_metadata(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
