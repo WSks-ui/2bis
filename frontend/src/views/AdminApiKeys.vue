@@ -79,7 +79,7 @@
             <button v-if="editingId" class="btn-ghost" type="button" @click="resetForm">取消编辑</button>
           </div>
 
-          <p class="form-note">当前上游 aiartmirror 不支持 response_format，默认保持“不发送”。部分兼容接口示例未包含 quality，可关闭“发送 quality 参数”。点击“测试”会发起一次 low 质量生图请求，可能产生上游成本。</p>
+          <p class="form-note">当前 aiartmirror 与 zilan520 默认不发送 response_format；zilan520 已支持 quality 参数，可保持“发送 quality 参数”。点击“测试”只会请求 /models 验证 Key 与 Base URL，不会发起生图请求。</p>
         </form>
 
         <section class="surface-card key-list">
@@ -271,7 +271,7 @@ async function testSavedKey(item) {
   try {
     const res = await api.post(`/admin/api-keys/${item.id}/test`, {})
     if (res.data.ok) {
-      ElMessage.success('连接测试成功')
+      ElMessage.success(res.data.message || '连接测试成功')
     } else {
       ElMessage.warning(res.data.message || '连接测试失败')
     }

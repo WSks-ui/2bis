@@ -12,9 +12,11 @@ from app.config import (
     AI_API_KEY,
     AI_API_URL,
     AI_IMAGE_RESPONSE_FORMAT,
+    API_KEY_ALLOW_ENV_FALLBACK,
     API_KEY_CONFIG_CACHE_SECONDS,
     API_KEY_CIRCUIT_COOLDOWN_SECONDS,
     API_KEY_CIRCUIT_FAILURE_THRESHOLD,
+    API_KEY_PROBE_TIMEOUT,
     API_KEY_ENCRYPTION_SECRET,
     SECRET_KEY,
 )
@@ -34,6 +36,10 @@ class ActiveApiConfig:
     send_quality: bool = True
     config_id: int | None = None
     key_mask: str | None = None
+
+
+class NoAvailableApiConfigError(Exception):
+    pass
 
 
 _fernet: Fernet | None = None
@@ -109,10 +115,12 @@ async def get_active_api_config(force_refresh: bool = False) -> ActiveApiConfig:
         and _cached_config is not None
         and now - _cached_at <= API_KEY_CONFIG_CACHE_SECONDS
     ):
-        return _cached_config
+        if await is_cached_api_config_usable(_cached_config):
+            return _cached_config
+        invalidate_active_api_config_cache()
 
     async with async_session() as db:
-        config = await select_runtime_api_config(db)
+        config, has_db_configs = await select_runtime_api_config(db)
 
     if config is not None:
         active = ActiveApiConfig(
@@ -123,7 +131,7 @@ async def get_active_api_config(force_refresh: bool = False) -> ActiveApiConfig:
             config_id=config.id,
             key_mask=config.key_mask,
         )
-    else:
+    elif not has_db_configs or API_KEY_ALLOW_ENV_FALLBACK:
         active = ActiveApiConfig(
             api_url=normalize_api_url(AI_API_URL),
             api_key=AI_API_KEY,
@@ -132,10 +140,22 @@ async def get_active_api_config(force_refresh: bool = False) -> ActiveApiConfig:
             config_id=None,
             key_mask=mask_api_key(AI_API_KEY) if AI_API_KEY else None,
         )
+    else:
+        raise NoAvailableApiConfigError("没有可用的数据库 API 通道，且已禁止回退到 .env API Key。")
 
     _cached_config = active
     _cached_at = now
     return active
+
+
+async def is_cached_api_config_usable(config: ActiveApiConfig) -> bool:
+    if config.config_id is None:
+        return True
+    async with async_session() as db:
+        db_config = await db.get(ApiKeyConfig, config.config_id)
+    if db_config is None or not db_config.is_enabled:
+        return False
+    return not is_circuit_open(db_config)
 
 
 def is_circuit_open(config: ApiKeyConfig, now: datetime | None = None) -> bool:
@@ -146,8 +166,11 @@ def is_circuit_open(config: ApiKeyConfig, now: datetime | None = None) -> bool:
     return config.circuit_open_until > (now or datetime.utcnow())
 
 
-async def select_runtime_api_config(db: AsyncSession) -> ApiKeyConfig | None:
+async def select_runtime_api_config(db: AsyncSession) -> tuple[ApiKeyConfig | None, bool]:
     now = datetime.utcnow()
+    has_db_configs = (
+        await db.execute(select(ApiKeyConfig.id).limit(1))
+    ).scalar_one_or_none() is not None
     result = await db.execute(
         select(ApiKeyConfig)
         .where(ApiKeyConfig.is_enabled.is_(True))
@@ -156,7 +179,7 @@ async def select_runtime_api_config(db: AsyncSession) -> ApiKeyConfig | None:
     configs = result.scalars().all()
     selected = next((config for config in configs if not is_circuit_open(config, now)), None)
     if selected is None:
-        return None
+        return None, has_db_configs
 
     if not selected.is_active:
         await db.execute(
@@ -170,7 +193,7 @@ async def select_runtime_api_config(db: AsyncSession) -> ApiKeyConfig | None:
         await db.refresh(selected)
         invalidate_active_api_config_cache()
 
-    return selected
+    return selected, has_db_configs
 
 
 async def touch_api_config_used(config_id: int | None) -> None:
@@ -196,6 +219,7 @@ async def mark_api_config_failed(
     message: str,
     *,
     terminal: bool = False,
+    update_test_status: bool = False,
 ) -> None:
     if config_id is None:
         return
@@ -211,11 +235,16 @@ async def mark_api_config_failed(
         values = {
             "failure_count": failure_count,
             "last_failure_at": now,
-            "last_test_status": "failed",
-            "last_test_message": message[:500],
-            "last_tested_at": now,
             "updated_at": now,
         }
+        if update_test_status:
+            values.update(
+                {
+                    "last_test_status": "failed",
+                    "last_test_message": message[:500],
+                    "last_tested_at": now,
+                }
+            )
         if should_open:
             values.update(
                 {
@@ -294,36 +323,36 @@ async def probe_api_key(
     api_key: str,
     response_format: str | None = None,
     send_quality: bool = True,
-    timeout_seconds: float = 20.0,
+    timeout_seconds: float = API_KEY_PROBE_TIMEOUT,
 ) -> tuple[bool, str]:
-    payload = {
-        "model": "gpt-image-2",
-        "prompt": "connection test",
-        "n": 1,
-        "size": "1024x1024",
-    }
-    if send_quality:
-        payload["quality"] = "low"
-    normalized_format = normalize_response_format(response_format)
-    if normalized_format:
-        payload["response_format"] = normalized_format
+    normalize_response_format(response_format)
 
     try:
         async with httpx.AsyncClient(timeout=timeout_seconds, proxy=None, trust_env=False) as client:
-            response = await client.post(
-                f"{normalize_api_url(api_url)}/images/generations",
-                json=payload,
+            request = client.build_request(
+                "GET",
+                f"{normalize_api_url(api_url)}/models",
                 headers={"Authorization": f"Bearer {api_key.strip()}"},
             )
-        if response.status_code == 200:
-            return True, "连接测试成功"
+            response = await client.send(request, stream=True)
+            try:
+                if 200 <= response.status_code < 300:
+                    return True, "连接测试成功（/models 验证通过，未发起生图请求）"
 
-        detail = response.text
-        try:
-            data = response.json()
-            detail = data.get("error", {}).get("message", detail)
-        except Exception:
-            pass
-        return False, f"HTTP {response.status_code}: {detail[:360]}"
+                await response.aread()
+                detail = response.text
+                try:
+                    data = response.json()
+                    detail = data.get("error", {}).get("message", detail)
+                except Exception:
+                    pass
+                if response.status_code in {404, 405}:
+                    return False, (
+                        "上游不支持无成本 /models 测试，未发起生图请求；"
+                        "请使用正式低规格任务验证图片生成接口。"
+                    )
+                return False, f"HTTP {response.status_code}: {detail[:360]}"
+            finally:
+                await response.aclose()
     except Exception as exc:
         return False, summarize_error(exc)
