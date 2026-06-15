@@ -24,6 +24,7 @@ export const useTasksStore = defineStore('tasks', () => {
       quality: data.quality || local.quality || 'low',
       size: data.size || local.size || '1024x1024',
       refPreview: local.refPreview || '',
+      refPreviews: local.refPreviews || (local.refPreview ? [local.refPreview] : []),
       status: mapStatus(data.status),
       rawStatus: data.status,
       imageUrl: data.image_url || '',
@@ -40,6 +41,13 @@ export const useTasksStore = defineStore('tasks', () => {
       upstreamResponseFormat: data.upstream_response_format || '',
       upstreamRequestId: data.upstream_request_id || '',
       upstreamElapsedSeconds: data.upstream_elapsed_seconds ?? null,
+      upstreamHeaderSeconds: data.upstream_header_seconds ?? null,
+      upstreamBodySeconds: data.upstream_body_seconds ?? null,
+      upstreamParseSeconds: data.upstream_parse_seconds ?? null,
+      upstreamSaveSeconds: data.upstream_save_seconds ?? null,
+      upstreamBodyBytes: data.upstream_body_bytes ?? null,
+      upstreamContentLength: data.upstream_content_length ?? null,
+      upstreamTransferEncoding: data.upstream_transfer_encoding || '',
       progressStage: data.progress_stage || '',
       progressMessage: data.progress_message || '',
       createdAt: data.created_at || local.createdAt || new Date().toISOString(),
@@ -80,17 +88,21 @@ export const useTasksStore = defineStore('tasks', () => {
     quality,
     size,
     refImage,
+    refImages,
     refPreview,
+    refPreviews,
     workflowType = 'standard',
     workflowPreset = '',
   }) {
+    const sourceImages = Array.isArray(refImages) ? refImages : (refImage ? [refImage] : [])
     const local = {
       id: `local-${Date.now()}`,
       mode,
       prompt,
       quality,
       size,
-      refPreview: refPreview || '',
+      refPreview: refPreview || refPreviews?.[0] || '',
+      refPreviews: refPreviews || (refPreview ? [refPreview] : []),
       status: 'queued',
       rawStatus: 'pending',
       imageUrl: '',
@@ -105,6 +117,13 @@ export const useTasksStore = defineStore('tasks', () => {
       upstreamResponseFormat: '',
       upstreamRequestId: '',
       upstreamElapsedSeconds: null,
+      upstreamHeaderSeconds: null,
+      upstreamBodySeconds: null,
+      upstreamParseSeconds: null,
+      upstreamSaveSeconds: null,
+      upstreamBodyBytes: null,
+      upstreamContentLength: null,
+      upstreamTransferEncoding: '',
       progressStage: '',
       progressMessage: '',
       createdAt: new Date().toISOString(),
@@ -124,8 +143,14 @@ export const useTasksStore = defineStore('tasks', () => {
           workflow_preset: workflowPreset || null,
         })
       } else {
+        if (!sourceImages.length) {
+          throw new Error('请先上传图片')
+        }
         const formData = new FormData()
-        formData.append('image', refImage)
+        sourceImages.forEach((image) => {
+          formData.append('image', image)
+        })
+        formData.append('mode', mode)
         formData.append('prompt', prompt)
         formData.append('quality', quality)
         formData.append('size', size)
@@ -147,7 +172,7 @@ export const useTasksStore = defineStore('tasks', () => {
       if (localTask) {
         localTask.status = 'failed'
         localTask.rawStatus = 'failed'
-        localTask.error = e.response?.data?.detail || '任务提交失败，请重试'
+        localTask.error = e.response?.data?.detail || e.message || '任务提交失败，请重试'
       }
       await refreshBalance()
     }

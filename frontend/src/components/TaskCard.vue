@@ -9,8 +9,15 @@
     </div>
 
     <div v-else class="task-pending">
-      <div v-if="task.refPreview" class="task-ref-thumb">
-        <img :src="task.refPreview" alt="参考图" loading="lazy" decoding="async" />
+      <div v-if="referencePreviews.length" class="task-ref-thumb-grid">
+        <img
+          v-for="(preview, index) in referencePreviews"
+          :key="`${preview}-${index}`"
+          :src="preview"
+          :alt="`参考图 ${index + 1}`"
+          loading="lazy"
+          decoding="async"
+        />
       </div>
       <div class="task-state">
         <span class="status-dot"></span>
@@ -32,6 +39,8 @@
       <span v-if="task.pointsCost">{{ task.pointsCost }} 额度</span>
       <span v-if="task.balanceSource">{{ sourceLabel }}</span>
       <span v-if="task.status === 'done' && timeLabel">{{ timeLabel }}</span>
+      <span v-if="upstreamTimingLabel">{{ upstreamTimingLabel }}</span>
+      <span v-if="upstreamTransferLabel">{{ upstreamTransferLabel }}</span>
       <span v-if="task.upstreamRequestQuality">请求质量 {{ task.upstreamRequestQuality }}</span>
       <span v-if="task.upstreamRequestId">上游 {{ shortRequestId }}</span>
       <button v-if="task.status === 'failed'" class="task-remove-btn" @click.stop="$emit('remove', task.id)">移除</button>
@@ -110,6 +119,29 @@ const workflowLabel = computed(() => {
   return map[props.task.workflowType] || props.task.workflowType
 })
 
+const referencePreviews = computed(() => {
+  if (Array.isArray(props.task.refPreviews) && props.task.refPreviews.length) {
+    return props.task.refPreviews.slice(0, 3)
+  }
+  return props.task.refPreview ? [props.task.refPreview] : []
+})
+
+const upstreamTimingLabel = computed(() => {
+  if (!props.task.upstreamElapsedSeconds) return ''
+  const parts = [`上游 ${formatSeconds(props.task.upstreamElapsedSeconds)}`]
+  if (props.task.upstreamHeaderSeconds != null) parts.push(`等待 ${formatSeconds(props.task.upstreamHeaderSeconds)}`)
+  if (props.task.upstreamBodySeconds != null) parts.push(`接收 ${formatSeconds(props.task.upstreamBodySeconds)}`)
+  if (props.task.upstreamSaveSeconds != null) parts.push(`保存 ${formatSeconds(props.task.upstreamSaveSeconds)}`)
+  return parts.join(' / ')
+})
+
+const upstreamTransferLabel = computed(() => {
+  if (!props.task.upstreamBodyBytes) return ''
+  const transfer = props.task.upstreamTransferEncoding ? ` · ${props.task.upstreamTransferEncoding}` : ''
+  const total = props.task.upstreamContentLength ? ` / ${formatBytes(props.task.upstreamContentLength)}` : ''
+  return `传输 ${formatBytes(props.task.upstreamBodyBytes)}${total}${transfer}`
+})
+
 const timeLabel = computed(() => {
   const createdAt = parseDate(props.task.createdAt)
   if (!createdAt) return ''
@@ -151,6 +183,19 @@ function formatDuration(milliseconds) {
   }
   if (minutes > 0) return `${minutes}分${seconds}秒`
   return `${seconds}秒`
+}
+
+function formatSeconds(seconds) {
+  if (!Number.isFinite(seconds)) return ''
+  if (seconds < 10) return `${seconds.toFixed(1)}s`
+  return `${Math.round(seconds)}s`
+}
+
+function formatBytes(value) {
+  const size = Number(value) || 0
+  if (size < 1024) return `${size}B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)}KB`
+  return `${(size / 1024 / 1024).toFixed(1)}MB`
 }
 
 function downloadImage() {
@@ -231,17 +276,20 @@ function downloadImage() {
   gap: 14px;
 }
 
-.task-ref-thumb {
+.task-ref-thumb-grid {
   height: 96px;
-  overflow: hidden;
-  border-radius: var(--radius-md);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
   opacity: 0.64;
 }
 
-.task-ref-thumb img {
+.task-ref-thumb-grid img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
 }
 
 .task-state {

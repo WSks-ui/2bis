@@ -7,9 +7,18 @@
     </div>
 
     <div v-if="needImage" class="upload-box" @click="triggerUpload">
-      <input ref="fileInput" type="file" accept="image/png,image/jpeg,image/webp" hidden @change="handleFileSelect" />
-      <img v-if="preview" :src="preview" alt="参考图" decoding="async" />
-      <span>{{ preview ? '更换图片' : '上传图片' }}</span>
+      <input
+        ref="fileInput"
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        :multiple="allowMultipleReferenceImages"
+        hidden
+        @change="handleFileSelect"
+      />
+      <div v-if="previews.length" class="upload-preview-list">
+        <img v-for="(item, index) in previews" :key="`${item}-${index}`" :src="item" :alt="`参考图 ${index + 1}`" decoding="async" />
+      </div>
+      <span>{{ uploadActionText }}</span>
     </div>
 
     <textarea v-model="prompt" class="prompt-input" rows="4" :placeholder="placeholder"></textarea>
@@ -73,8 +82,9 @@ const prompt = ref('')
 const quality = ref('low')
 const size = ref('1024x1024')
 const selectedRatio = ref('1:1')
-const imageFile = ref(null)
-const preview = ref('')
+const MAX_REFERENCE_IMAGES = 3
+const imageFiles = ref([])
+const previews = ref([])
 const imageUrl = ref('')
 const generating = ref(false)
 const fileInput = ref(null)
@@ -94,8 +104,9 @@ const qualities = [
 const sizeGroups = IMAGE_SIZE_GROUPS
 
 const needImage = computed(() => mode.value !== 'text2img')
+const allowMultipleReferenceImages = computed(() => mode.value === 'ref2img')
 const canSubmit = computed(() => {
-  if (needImage.value) return Boolean(prompt.value.trim() && imageFile.value)
+  if (needImage.value) return Boolean(prompt.value.trim() && imageFiles.value.length)
   return Boolean(prompt.value.trim())
 })
 const selectedSizeGroup = computed(() => {
@@ -107,13 +118,20 @@ const placeholder = computed(() => {
   if (mode.value === 'ref2img') return '结合参考图描述新画面'
   return '描述要如何编辑原图'
 })
+const uploadActionText = computed(() => {
+  if (!previews.value.length) return mode.value === 'edit' ? '上传原图' : '上传参考图'
+  if (allowMultipleReferenceImages.value && previews.value.length < MAX_REFERENCE_IMAGES) return '继续添加参考图'
+  return '更换图片'
+})
 
 function switchMode(nextMode) {
   mode.value = nextMode
   imageUrl.value = ''
   if (nextMode === 'text2img') {
-    imageFile.value = null
-    preview.value = ''
+    clearImages()
+  } else if (nextMode === 'edit' && imageFiles.value.length > 1) {
+    imageFiles.value = imageFiles.value.slice(0, 1)
+    previews.value = previews.value.slice(0, 1)
   }
 }
 
@@ -130,18 +148,37 @@ function selectRatio(ratio) {
 }
 
 function handleFileSelect(event) {
-  const file = event.target.files?.[0]
-  if (!file) return
-  if (!file.type.match(/image\/(png|jpeg|webp)/)) {
+  const selectedFiles = Array.from(event.target.files || [])
+  event.target.value = ''
+  if (!selectedFiles.length) return
+  const invalidFile = selectedFiles.find((file) => !file.type.match(/image\/(png|jpeg|webp)/))
+  if (invalidFile) {
     ElMessage.warning('仅支持 PNG / JPG / WebP')
     return
   }
-  imageFile.value = file
-  const reader = new FileReader()
-  reader.onload = (readerEvent) => {
-    preview.value = readerEvent.target.result
+  const nextFiles = allowMultipleReferenceImages.value
+    ? [...imageFiles.value, ...selectedFiles].slice(0, MAX_REFERENCE_IMAGES)
+    : selectedFiles.slice(0, 1)
+  if (allowMultipleReferenceImages.value && imageFiles.value.length + selectedFiles.length > MAX_REFERENCE_IMAGES) {
+    ElMessage.warning(`最多支持上传 ${MAX_REFERENCE_IMAGES} 张参考图`)
   }
-  reader.readAsDataURL(file)
+  imageFiles.value = nextFiles
+  Promise.all(nextFiles.map(readFileAsDataUrl)).then((nextPreviews) => {
+    previews.value = nextPreviews
+  })
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = (readerEvent) => resolve(readerEvent.target.result)
+    reader.readAsDataURL(file)
+  })
+}
+
+function clearImages() {
+  imageFiles.value = []
+  previews.value = []
 }
 
 async function submit() {
@@ -157,7 +194,8 @@ async function submit() {
       })
     } else {
       const formData = new FormData()
-      formData.append('image', imageFile.value)
+      imageFiles.value.forEach((image) => formData.append('image', image))
+      formData.append('mode', mode.value)
       formData.append('prompt', prompt.value.trim())
       formData.append('quality', quality.value)
       formData.append('size', size.value)
@@ -254,7 +292,13 @@ function downloadImage() {
   font-weight: 700;
 }
 
-.upload-box img {
+.upload-preview-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.upload-preview-list img {
   width: 70px;
   height: 56px;
   border-radius: var(--radius-sm);

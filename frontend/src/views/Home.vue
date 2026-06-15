@@ -98,12 +98,32 @@
 
         <section v-if="needImage" class="panel-section">
           <div class="section-title">{{ imageInputTitle }}</div>
-          <button class="upload-card" type="button" @click="triggerUpload">
-            <input ref="fileInput" type="file" accept="image/png,image/jpeg,image/webp" hidden @change="handleFileSelect" />
-            <img v-if="refPreview" :src="refPreview" alt="参考图" decoding="async" />
+          <input
+            ref="fileInput"
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            :multiple="allowMultipleReferenceImages"
+            hidden
+            @change="handleFileSelect"
+          />
+          <div class="upload-card" role="button" tabindex="0" @click="triggerUpload" @keydown.enter.prevent="triggerUpload">
+            <div v-if="refPreviews.length" class="upload-preview-grid" :class="{ single: refPreviews.length === 1 }">
+              <div v-for="(preview, index) in refPreviews" :key="`${preview}-${index}`" class="upload-preview-item">
+                <img :src="preview" :alt="`参考图 ${index + 1}`" decoding="async" />
+                <button
+                  class="upload-remove"
+                  type="button"
+                  :aria-label="`移除参考图 ${index + 1}`"
+                  @click.stop="removeReferenceImage(index)"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
             <span v-else class="upload-placeholder">{{ imageInputHint }}<br />支持 JPG / PNG / WebP</span>
             <strong>{{ imageInputAction }}</strong>
-          </button>
+          </div>
+          <p v-if="allowMultipleReferenceImages" class="upload-meta">已上传 {{ refImages.length }}/{{ MAX_REFERENCE_IMAGES }} 张参考图</p>
         </section>
       </aside>
 
@@ -235,8 +255,9 @@ const workflowOptions = ref([
     uses_experience_points: false
   }
 ])
-const refImage = ref(null)
-const refPreview = ref('')
+const MAX_REFERENCE_IMAGES = 3
+const refImages = ref([])
+const refPreviews = ref([])
 const fileInput = ref(null)
 const promptInput = ref(null)
 
@@ -262,14 +283,18 @@ const qualities = ref(fallbackQualities)
 const sizeGroups = ref(IMAGE_SIZE_GROUPS)
 
 const needImage = computed(() => mode.value !== 'text2img')
+const allowMultipleReferenceImages = computed(() => mode.value === 'ref2img')
 const imageInputTitle = computed(() => (mode.value === 'edit' ? '原图' : '参考图'))
 const imageInputHint = computed(() => (mode.value === 'edit' ? '点击上传需要编辑的原图' : '点击上传参考图'))
 const imageInputAction = computed(() => {
-  if (refPreview.value) return '更换图片'
+  if (refImages.value.length && allowMultipleReferenceImages.value && refImages.value.length < MAX_REFERENCE_IMAGES) {
+    return '继续添加参考图'
+  }
+  if (refImages.value.length) return '更换图片'
   return mode.value === 'edit' ? '上传原图' : '上传参考图'
 })
 const canSubmit = computed(() => {
-  if (needImage.value) return Boolean(prompt.value.trim() && refImage.value)
+  if (needImage.value) return Boolean(prompt.value.trim() && refImages.value.length)
   return Boolean(prompt.value.trim())
 })
 const sortedTasks = computed(() => [...tasksStore.tasks].reverse())
@@ -318,8 +343,10 @@ onActivated(() => {
 function switchMode(nextMode) {
   mode.value = nextMode
   if (nextMode === 'text2img') {
-    refImage.value = null
-    refPreview.value = ''
+    clearReferenceImages()
+  } else if (nextMode === 'edit' && refImages.value.length > 1) {
+    refImages.value = refImages.value.slice(0, 1)
+    refPreviews.value = refPreviews.value.slice(0, 1)
   }
   nextTick(() => promptInput.value?.focus())
 }
@@ -421,18 +448,43 @@ function triggerUpload() {
 }
 
 function handleFileSelect(event) {
-  const file = event.target.files?.[0]
-  if (!file) return
-  if (!file.type.match(/image\/(png|jpeg|webp)/)) {
+  const selectedFiles = Array.from(event.target.files || [])
+  event.target.value = ''
+  if (!selectedFiles.length) return
+  const invalidFile = selectedFiles.find((file) => !file.type.match(/image\/(png|jpeg|webp)/))
+  if (invalidFile) {
     ElMessage.warning('仅支持 PNG / JPG / WebP')
     return
   }
-  refImage.value = file
-  const reader = new FileReader()
-  reader.onload = (readerEvent) => {
-    refPreview.value = readerEvent.target.result
+
+  const nextFiles = allowMultipleReferenceImages.value
+    ? [...refImages.value, ...selectedFiles].slice(0, MAX_REFERENCE_IMAGES)
+    : selectedFiles.slice(0, 1)
+  if (allowMultipleReferenceImages.value && refImages.value.length + selectedFiles.length > MAX_REFERENCE_IMAGES) {
+    ElMessage.warning(`最多支持上传 ${MAX_REFERENCE_IMAGES} 张参考图`)
   }
-  reader.readAsDataURL(file)
+  refImages.value = nextFiles
+  Promise.all(nextFiles.map(readFileAsDataUrl)).then((previews) => {
+    refPreviews.value = previews
+  })
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = (readerEvent) => resolve(readerEvent.target.result)
+    reader.readAsDataURL(file)
+  })
+}
+
+function removeReferenceImage(index) {
+  refImages.value.splice(index, 1)
+  refPreviews.value.splice(index, 1)
+}
+
+function clearReferenceImages() {
+  refImages.value = []
+  refPreviews.value = []
 }
 
 function clearPrompt() {
@@ -461,7 +513,7 @@ function focusPanel() {
 
 function handleSubmit() {
   if (!prompt.value.trim()) return
-  if (needImage.value && !refImage.value) {
+  if (needImage.value && !refImages.value.length) {
     ElMessage.warning('请先上传图片')
     return
   }
@@ -471,16 +523,16 @@ function handleSubmit() {
     prompt: prompt.value.trim(),
     quality: quality.value,
     size: size.value,
-    refImage: refImage.value,
-    refPreview: refPreview.value,
+    refImages: [...refImages.value],
+    refPreview: refPreviews.value[0] || '',
+    refPreviews: [...refPreviews.value],
     workflowType: selectedWorkflowType.value,
     workflowPreset: selectedWorkflowPreset.value
   })
 
   prompt.value = ''
   if (mode.value === 'text2img') {
-    refImage.value = null
-    refPreview.value = ''
+    clearReferenceImages()
   }
 }
 </script>
@@ -717,13 +769,47 @@ function handleSubmit() {
   border-style: dashed;
   border-radius: var(--radius-md);
   text-align: left;
+  cursor: pointer;
 }
 
-.upload-card img {
+.upload-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.upload-preview-grid.single {
+  grid-template-columns: 76px;
+}
+
+.upload-preview-item {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--color-paper-soft);
+}
+
+.upload-preview-item img {
   width: 76px;
   height: 76px;
   object-fit: cover;
-  border-radius: var(--radius-sm);
+  display: block;
+}
+
+.upload-remove {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 20px;
+  height: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--color-ink);
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1;
+  backdrop-filter: blur(8px);
 }
 
 .upload-placeholder {
@@ -736,6 +822,13 @@ function handleSubmit() {
 .upload-card strong {
   color: var(--color-ink);
   font-size: 12px;
+}
+
+.upload-meta {
+  margin: 8px 0 0;
+  color: var(--color-soft);
+  font-family: var(--font-ui);
+  font-size: 11px;
 }
 
 .studio-main {
