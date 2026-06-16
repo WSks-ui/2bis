@@ -24,6 +24,7 @@ dist/
 # OS
 Thumbs.db
 
+# Backend runtime image/upload artifacts are local-only.
 # 后端生成的 AI 图片和上传文件 (落盘,不入库)
 backend/static/images/
 backend/static/uploads/
