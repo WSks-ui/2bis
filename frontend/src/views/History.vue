@@ -3,8 +3,11 @@
     <main class="history-shell">
       <aside v-reveal class="filter-panel surface-card">
         <div class="filter-head">
-          <h2>筛选</h2>
-          <button type="button" @click="resetFilters">清空</button>
+          <div>
+            <h2>筛选</h2>
+            <span v-if="activeFilterCount" class="filter-count">{{ activeFilterCount }} 项已启用</span>
+          </div>
+          <button type="button" :disabled="!activeFilterCount" @click="resetFilters">清空</button>
         </div>
 
         <label>
@@ -73,22 +76,45 @@
         </header>
 
         <Transition name="modal-pop" mode="out-in">
-        <div v-if="loading" class="state-area surface-card">加载中...</div>
+        <div v-if="loading" class="state-area loading-state surface-card" aria-live="polite">
+          <div class="state-orb" aria-hidden="true"></div>
+          <strong>正在整理你的作品档案</strong>
+          <p>优先展示已缓存的缩略图，完整原图会在打开预览时再载入。</p>
+          <div class="history-skeleton" aria-hidden="true">
+            <span v-for="item in 4" :key="item"></span>
+          </div>
+        </div>
 
         <div v-else-if="!filteredRecords.length" class="state-area surface-card">
-          <p>暂无匹配记录</p>
+          <div class="empty-visual" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <strong>暂无匹配记录</strong>
+          <p>尝试清空筛选，或回到创作台生成新的图像资产。</p>
           <router-link to="/" class="btn-black start-link">开始创作</router-link>
         </div>
 
         <section v-else class="history-table surface-card" :class="{ 'is-page-loading': pageLoading }">
+          <div class="table-toolbar">
+            <div>
+              <span>当前页</span>
+              <strong>{{ currentPage }} / {{ totalPages }}</strong>
+            </div>
+            <p v-if="pageLoading">正在同步最新记录</p>
+            <p v-else>共 {{ totalRecords }} 条记录，缩略图已按页缓存</p>
+          </div>
           <TransitionGroup name="list" tag="div" class="history-list">
           <article v-for="record in pagedRecords" :key="record.id" class="history-row">
             <button class="thumb-button" @click="openPreview(record)">
               <img :src="record.thumbnail_url || record.image_url" :alt="record.prompt" loading="lazy" decoding="async" />
+              <span class="thumb-overlay">预览</span>
             </button>
 
             <div class="record-prompt">
               <p>{{ record.prompt }}</p>
+              <small>{{ formatTime(record.created_at) }}</small>
               <div class="record-tags">
                 <span>{{ qualityLabel(record.quality) }}</span>
                 <span>{{ workflowLabel(record.workflow_type) }}</span>
@@ -129,7 +155,10 @@
     <div v-if="previewRecord" class="preview-overlay" @click.self="closePreview">
       <Transition name="modal-pop" appear>
       <div class="preview-modal">
-        <button class="preview-close" @click="closePreview">×</button>
+        <div class="preview-topbar">
+          <span>作品预览</span>
+          <button class="preview-close" aria-label="关闭预览" @click="closePreview">×</button>
+        </div>
         <div class="preview-image-frame">
           <img
             :src="previewImageUrl || previewRecord.thumbnail_url || previewRecord.image_url"
@@ -146,6 +175,10 @@
             <span>{{ sourceLabel(previewRecord.balance_source) }}</span>
             <span>{{ workflowLabel(previewRecord.workflow_type) }}</span>
             <span>{{ formatTime(previewRecord.created_at) }}</span>
+          </div>
+          <div class="preview-actions">
+            <button class="btn-ghost" type="button" @click="downloadImage(previewRecord)">下载原图</button>
+            <button class="btn-black" type="button" @click="closePreview">完成</button>
           </div>
         </div>
       </div>
@@ -226,6 +259,10 @@ const filteredRecords = computed(() => {
 })
 
 const pagedRecords = computed(() => filteredRecords.value)
+
+const activeFilterCount = computed(() => {
+  return ['range', 'workflow', 'quality', 'source'].filter((key) => filters[key] !== 'all').length
+})
 
 const paginationItems = computed(() => {
   const total = totalPages.value
@@ -532,6 +569,15 @@ function formatTime(timeStr) {
   font-size: 18px;
 }
 
+.filter-count {
+  margin-top: 4px;
+  display: inline-flex;
+  color: var(--color-blue);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 850;
+}
+
 .filter-head button,
 .export-button,
 .row-actions button,
@@ -572,6 +618,12 @@ function formatTime(timeStr) {
 .btn-ghost:active,
 .btn-danger:active {
   transform: translateY(0) scale(0.97);
+}
+
+.filter-head button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+  transform: none;
 }
 
 .filter-head button {
@@ -681,12 +733,98 @@ function formatTime(timeStr) {
 }
 
 .state-area {
+  position: relative;
+  overflow: hidden;
   min-height: 300px;
   display: grid;
   place-items: center;
   gap: 14px;
   color: var(--color-muted);
   text-align: center;
+}
+
+.state-area strong {
+  color: var(--color-ink);
+  font-size: 18px;
+}
+
+.state-area p {
+  max-width: 430px;
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.loading-state {
+  align-content: center;
+}
+
+.state-orb {
+  width: 74px;
+  height: 74px;
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.95), transparent 24px),
+    linear-gradient(135deg, rgba(60, 110, 232, 0.22), rgba(28, 180, 151, 0.18));
+  box-shadow: 0 18px 38px rgba(60, 110, 232, 0.13);
+  animation: state-orb-float 2.8s var(--ease-out-soft) infinite;
+}
+
+.history-skeleton {
+  width: min(480px, 82%);
+  margin-top: 8px;
+  display: grid;
+  gap: 9px;
+}
+
+.history-skeleton span {
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(226, 229, 223, 0.46), rgba(255, 255, 255, 0.92), rgba(226, 229, 223, 0.46));
+  background-size: 220% 100%;
+  animation: skeleton-scan 1.5s ease-in-out infinite;
+}
+
+.history-skeleton span:nth-child(2) {
+  width: 84%;
+}
+
+.history-skeleton span:nth-child(3) {
+  width: 68%;
+}
+
+.history-skeleton span:nth-child(4) {
+  width: 76%;
+}
+
+.empty-visual {
+  width: 132px;
+  height: 92px;
+  position: relative;
+}
+
+.empty-visual span {
+  position: absolute;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: var(--shadow-sm);
+  animation: empty-card-float 3.4s ease-in-out infinite;
+}
+
+.empty-visual span:nth-child(1) {
+  inset: 18px 36px 8px 10px;
+  transform: rotate(-7deg);
+}
+
+.empty-visual span:nth-child(2) {
+  inset: 4px 16px 18px 30px;
+  animation-delay: -1s;
+}
+
+.empty-visual span:nth-child(3) {
+  inset: 24px 4px 0 54px;
+  transform: rotate(6deg);
+  animation-delay: -1.8s;
 }
 
 .start-link {
@@ -702,6 +840,39 @@ function formatTime(timeStr) {
   position: relative;
   overflow: hidden;
   transition: opacity var(--transition-base);
+}
+
+.table-toolbar {
+  padding: 15px 17px;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  border-bottom: 1px solid rgba(226, 229, 223, 0.76);
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.72), rgba(246, 244, 238, 0.42)),
+    radial-gradient(circle at 0% 0%, rgba(60, 110, 232, 0.06), transparent 16rem);
+}
+
+.table-toolbar div {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.table-toolbar span,
+.table-toolbar p {
+  margin: 0;
+  color: var(--color-muted);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 820;
+}
+
+.table-toolbar strong {
+  color: var(--color-ink);
+  font-family: var(--font-heading);
+  font-size: 18px;
 }
 
 .history-table.is-page-loading {
@@ -741,6 +912,7 @@ function formatTime(timeStr) {
 }
 
 .thumb-button {
+  position: relative;
   width: 68px;
   height: 68px;
   padding: 0;
@@ -774,6 +946,30 @@ function formatTime(timeStr) {
   filter: saturate(1.05);
 }
 
+.thumb-overlay {
+  position: absolute;
+  inset: auto 7px 7px;
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(17, 17, 17, 0.66);
+  color: #fff;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 850;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity var(--transition-base), transform var(--transition-base);
+  backdrop-filter: blur(8px);
+}
+
+.thumb-button:hover .thumb-overlay {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 .record-prompt {
   min-width: 0;
 }
@@ -785,6 +981,15 @@ function formatTime(timeStr) {
   display: -webkit-box;
   -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
+}
+
+.record-prompt small {
+  display: none;
+  margin: -3px 0 8px;
+  color: var(--color-muted);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 760;
 }
 
 .record-tags {
@@ -882,6 +1087,31 @@ function formatTime(timeStr) {
   background: #111;
 }
 
+.preview-topbar {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  pointer-events: none;
+}
+
+.preview-topbar span {
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: rgba(17, 17, 17, 0.86);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 850;
+  backdrop-filter: blur(10px);
+}
+
 .preview-image-frame img {
   max-width: 100%;
   max-height: 70vh;
@@ -967,9 +1197,7 @@ function formatTime(timeStr) {
 }
 
 .preview-close {
-  position: absolute;
-  top: 12px;
-  right: 12px;
+  position: static;
   width: 36px;
   height: 36px;
   border: 1px solid rgba(255, 255, 255, 0.58);
@@ -980,6 +1208,7 @@ function formatTime(timeStr) {
   font-size: 22px;
   backdrop-filter: blur(10px);
   transition: transform var(--transition-base), background var(--transition-base), box-shadow var(--transition-base);
+  pointer-events: auto;
 }
 
 .preview-close:hover {
@@ -991,6 +1220,27 @@ function formatTime(timeStr) {
 .preview-info,
 .confirm-box {
   padding: 20px;
+}
+
+.preview-actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.preview-actions .btn-black,
+.preview-actions .btn-ghost {
+  min-height: 38px;
+  padding: 0 15px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-ui);
+  font-weight: 850;
+}
+
+.preview-actions .btn-black {
+  border: 0;
+  cursor: pointer;
 }
 
 @keyframes thumb-in {
@@ -1021,6 +1271,38 @@ function formatTime(timeStr) {
   50% {
     opacity: 1;
     transform: translateX(-50%) translateY(-2px);
+  }
+}
+
+@keyframes state-orb-float {
+  0%, 100% {
+    border-radius: 28px;
+    transform: translateY(0) rotate(-2deg);
+  }
+
+  50% {
+    border-radius: 34px 24px 30px 26px;
+    transform: translateY(-5px) rotate(3deg);
+  }
+}
+
+@keyframes skeleton-scan {
+  from {
+    background-position: 120% 0;
+  }
+
+  to {
+    background-position: -120% 0;
+  }
+}
+
+@keyframes empty-card-float {
+  0%, 100% {
+    translate: 0 0;
+  }
+
+  50% {
+    translate: 0 -5px;
   }
 }
 
@@ -1094,6 +1376,15 @@ function formatTime(timeStr) {
     gap: 12px;
   }
 
+  .table-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .record-prompt small {
+    display: block;
+  }
+
   .cost-cell,
   .time-cell {
     display: none;
@@ -1136,6 +1427,23 @@ function formatTime(timeStr) {
 
   .row-actions {
     grid-column: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .state-orb,
+  .history-skeleton span,
+  .empty-visual span,
+  .thumb-button img,
+  .preview-image-frame img,
+  .preview-loading {
+    animation: none;
+  }
+
+  .history-row:hover,
+  .thumb-button:hover,
+  .pagination-bar:hover {
+    transform: none;
   }
 }
 </style>
