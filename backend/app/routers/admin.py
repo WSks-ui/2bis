@@ -20,6 +20,7 @@ from app.services.api_key_manager import (
     deactivate_other_configs,
     encrypt_api_key,
     invalidate_active_api_config_cache,
+    is_circuit_open,
     mask_api_key,
     normalize_api_url,
     normalize_response_format,
@@ -31,6 +32,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 def api_key_response(config: ApiKeyConfig) -> AdminApiKeyResponse:
+    circuit_open = is_circuit_open(config)
     return AdminApiKeyResponse(
         id=config.id,
         name=config.name,
@@ -41,9 +43,9 @@ def api_key_response(config: ApiKeyConfig) -> AdminApiKeyResponse:
         send_quality=config.send_quality,
         is_active=config.is_active,
         is_enabled=config.is_enabled,
-        circuit_state=config.circuit_state,
-        circuit_reason=config.circuit_reason,
-        circuit_open_until=config.circuit_open_until,
+        circuit_state=config.circuit_state if circuit_open else "closed",
+        circuit_reason=config.circuit_reason if circuit_open else None,
+        circuit_open_until=config.circuit_open_until if circuit_open else None,
         failure_count=config.failure_count,
         last_failure_at=config.last_failure_at,
         last_test_status=config.last_test_status,
@@ -84,10 +86,11 @@ async def create_api_key(
     except ApiKeyConfigError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    test_message = None
     if data.test_before_activate:
-        ok, message = await probe_api_key(api_url, data.api_key, response_format, data.send_quality)
+        ok, test_message = await probe_api_key(api_url, data.api_key, response_format, data.send_quality)
         if not ok:
-            raise HTTPException(status_code=400, detail=f"API Key test failed: {message}")
+            raise HTTPException(status_code=400, detail=f"API Key test failed: {test_message}")
 
     now = datetime.utcnow()
     config = ApiKeyConfig(
@@ -101,7 +104,7 @@ async def create_api_key(
         is_active=bool(data.activate and data.is_enabled),
         is_enabled=data.is_enabled,
         last_test_status="success" if data.test_before_activate else None,
-        last_test_message="连接测试成功" if data.test_before_activate else None,
+        last_test_message=test_message if data.test_before_activate else None,
         last_tested_at=now if data.test_before_activate else None,
         created_by=current_admin.id,
         updated_by=current_admin.id,

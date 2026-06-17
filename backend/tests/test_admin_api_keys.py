@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import AsyncMock, patch
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -10,11 +11,18 @@ from app.models import AdminAuditLog, ApiKeyConfig, User
 from app.routers.admin import activate_api_key, create_api_key, list_api_keys, update_api_key
 from app.schemas import AdminApiKeyCreate, AdminApiKeyUpdate
 from app.services.api_key_manager import (
+    NoAvailableApiConfigError,
     decrypt_api_key,
     get_active_api_config,
     invalidate_active_api_config_cache,
     mark_api_config_failed,
+    probe_api_key,
 )
+
+
+class NeverReadBodyStream(httpx.AsyncByteStream):
+    async def __aiter__(self):
+        raise AssertionError("probe should not download a successful response body")
 
 
 class AdminApiKeysTest(unittest.IsolatedAsyncioTestCase):
@@ -145,6 +153,86 @@ class AdminApiKeysTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.last_test_status, "success")
         self.assertIsNotNone(response.last_tested_at)
 
+    async def test_probe_uses_models_endpoint_without_reading_success_body(self) -> None:
+        seen_request = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal seen_request
+            seen_request = {
+                "method": request.method,
+                "url": str(request.url),
+                "body": request.read(),
+            }
+            return httpx.Response(
+                200,
+                stream=NeverReadBodyStream(),
+                request=request,
+                headers={"content-type": "application/json"},
+            )
+
+        transport = httpx.MockTransport(handler)
+        real_async_client = httpx.AsyncClient
+
+        def client_factory(*args, **kwargs):
+            kwargs["transport"] = transport
+            return real_async_client(*args, **kwargs)
+
+        with patch("app.services.api_key_manager.httpx.AsyncClient", side_effect=client_factory):
+            ok, message = await probe_api_key(
+                "https://api.zilan520.shop/v1",
+                "sk-test-1234",
+                send_quality=False,
+            )
+
+        self.assertTrue(ok)
+        self.assertIn("/models", message)
+        self.assertEqual(seen_request["method"], "GET")
+        self.assertEqual(seen_request["url"], "https://api.zilan520.shop/v1/models")
+        self.assertEqual(seen_request["body"], b"")
+
+    async def test_probe_reads_error_body_for_non_200_response(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                502,
+                json={"error": {"message": "upstream bad gateway"}},
+                request=request,
+            )
+
+        transport = httpx.MockTransport(handler)
+        real_async_client = httpx.AsyncClient
+
+        def client_factory(*args, **kwargs):
+            kwargs["transport"] = transport
+            return real_async_client(*args, **kwargs)
+
+        with patch("app.services.api_key_manager.httpx.AsyncClient", side_effect=client_factory):
+            ok, message = await probe_api_key(
+                "https://api.zilan520.shop/v1",
+                "sk-test-1234",
+                send_quality=False,
+            )
+
+        self.assertFalse(ok)
+        self.assertIn("HTTP 502", message)
+        self.assertIn("upstream bad gateway", message)
+
+    async def test_probe_reports_no_cost_test_when_models_endpoint_is_missing(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(404, json={"error": {"message": "not found"}}, request=request)
+
+        transport = httpx.MockTransport(handler)
+        real_async_client = httpx.AsyncClient
+
+        def client_factory(*args, **kwargs):
+            kwargs["transport"] = transport
+            return real_async_client(*args, **kwargs)
+
+        with patch("app.services.api_key_manager.httpx.AsyncClient", side_effect=client_factory):
+            ok, message = await probe_api_key("https://api.example/v1", "sk-test-1234")
+
+        self.assertFalse(ok)
+        self.assertIn("未发起生图请求", message)
+
     async def test_update_can_toggle_quality_parameter(self) -> None:
         admin = await self.create_user(is_admin=True)
         async with self.session_factory() as db:
@@ -214,6 +302,44 @@ class AdminApiKeysTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(primary_config.is_active)
         self.assertTrue(backup_config.is_active)
         self.assertEqual(primary_config.failure_count, 1)
+
+    async def test_runtime_does_not_fallback_to_env_when_db_configs_are_unavailable(self) -> None:
+        admin = await self.create_user(is_admin=True)
+        async with self.session_factory() as db:
+            primary = await create_api_key(
+                AdminApiKeyCreate(name="primary", api_key="sk-primary-1234", activate=True),
+                db=db,
+                current_admin=admin,
+            )
+
+        with (
+            patch("app.services.api_key_manager.async_session", self.session_factory),
+            patch("app.services.api_key_manager.API_KEY_ALLOW_ENV_FALLBACK", False),
+        ):
+            await mark_api_config_failed(primary.id, "bad gateway", terminal=True)
+            with self.assertRaises(NoAvailableApiConfigError):
+                await get_active_api_config(force_refresh=True)
+
+    async def test_runtime_does_not_fallback_to_env_when_db_configs_are_disabled(self) -> None:
+        admin = await self.create_user(is_admin=True)
+        async with self.session_factory() as db:
+            await create_api_key(
+                AdminApiKeyCreate(
+                    name="disabled",
+                    api_key="sk-disabled-1234",
+                    activate=False,
+                    is_enabled=False,
+                ),
+                db=db,
+                current_admin=admin,
+            )
+
+        with (
+            patch("app.services.api_key_manager.async_session", self.session_factory),
+            patch("app.services.api_key_manager.API_KEY_ALLOW_ENV_FALLBACK", False),
+        ):
+            with self.assertRaises(NoAvailableApiConfigError):
+                await get_active_api_config(force_refresh=True)
 
 
 if __name__ == "__main__":

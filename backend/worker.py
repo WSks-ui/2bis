@@ -19,6 +19,7 @@ from app.services.ai_client import (
     AIClient,
     AIImageResult,
     AIInsufficientCreditsError,
+    AINoAvailableApiConfigError,
     AIResponseBodyTimeoutError,
     AIResponsePayloadError,
     AIResponseInterruptedError,
@@ -42,6 +43,7 @@ _remote_mirror_semaphore = asyncio.Semaphore(2)
 
 
 def apply_upstream_audit(target, result: AIImageResult) -> None:
+    # 上游耗时同时写入任务和历史记录，任务卡消失后仍可追查链路性能回退。
     target.upstream_model = result.model
     target.upstream_endpoint = result.endpoint
     target.upstream_request_quality = result.request_quality
@@ -50,7 +52,55 @@ def apply_upstream_audit(target, result: AIImageResult) -> None:
     target.upstream_request_id = result.response_request_id
     target.upstream_content_type = result.response_content_type
     target.upstream_elapsed_seconds = round(result.elapsed_seconds, 3)
+    target.upstream_header_seconds = round(result.header_seconds, 3) if result.header_seconds is not None else None
+    target.upstream_body_seconds = round(result.body_seconds, 3) if result.body_seconds is not None else None
+    target.upstream_parse_seconds = round(result.parse_seconds, 3) if result.parse_seconds is not None else None
+    target.upstream_body_bytes = result.body_bytes
+    target.upstream_content_length = result.content_length
+    target.upstream_transfer_encoding = result.transfer_encoding
     target.upstream_payload_length = result.payload_length
+
+
+def apply_upstream_error_audit(target, exc: Exception) -> None:
+    if not isinstance(exc, AIUpstreamServerError):
+        return
+
+    # 5xx 可能还会重试，但失败尝试的耗时和请求参数对比上游/参数组合时仍然有用。
+    target.upstream_model = target.upstream_model or "gpt-image-2"
+    target.upstream_endpoint = exc.endpoint
+    target.upstream_request_quality = exc.request_quality
+    target.upstream_request_size = exc.request_size
+    target.upstream_response_format = exc.response_format
+    target.upstream_request_id = exc.request_id
+    target.upstream_content_type = exc.content_type
+    if exc.elapsed_seconds is not None:
+        target.upstream_elapsed_seconds = round(exc.elapsed_seconds, 3)
+    if exc.header_seconds is not None:
+        target.upstream_header_seconds = round(exc.header_seconds, 3)
+    if exc.body_seconds is not None:
+        target.upstream_body_seconds = round(exc.body_seconds, 3)
+    target.upstream_body_bytes = exc.body_bytes
+    target.upstream_content_length = exc.content_length
+    target.upstream_transfer_encoding = exc.transfer_encoding
+
+
+def task_error_message(exc: Exception) -> str:
+    if not isinstance(exc, AIUpstreamServerError):
+        return str(exc)
+
+    parts = [str(exc)]
+    detail_parts = []
+    if exc.request_size:
+        detail_parts.append(f"size={exc.request_size}")
+    if exc.request_quality:
+        detail_parts.append(f"quality={exc.request_quality}")
+    if exc.request_id:
+        detail_parts.append(f"request_id={exc.request_id}")
+    if exc.detail:
+        detail_parts.append(f"upstream={exc.detail}")
+    if detail_parts:
+        parts.append("；".join(detail_parts))
+    return " ".join(parts)
 
 
 async def update_task_progress(
@@ -218,6 +268,7 @@ async def process_task(task_id: int) -> None:
         ) -> None:
             nonlocal last_progress_update_at, last_progress_update_bytes
             now = time.monotonic()
+            # 大 base64 传输期间限制数据库写入频率；过于频繁会影响轮询和光标动画流畅度。
             should_update = (
                 now - last_progress_update_at >= 30
                 or received_bytes - last_progress_update_bytes >= 5 * 1024 * 1024
@@ -281,6 +332,7 @@ async def process_task(task_id: int) -> None:
 
         save_started_at = time.monotonic()
         await update_task_progress(task_id, "saving", "图片已接收，正在保存到本地。")
+        # 链接响应先让用户看到结果；下方镜像任务再后台落本地，不阻塞成功态。
         image_url = ai_result.image_url or await save_data_url(raw_data_url, task.user_id)
         save_seconds = time.monotonic() - save_started_at
         logger.info("task %s image result stored in %.1fs: %s", task_id, save_seconds, image_url)
@@ -299,6 +351,7 @@ async def process_task(task_id: int) -> None:
             task.locked_at = None
             task.finished_at = datetime.utcnow()
             apply_upstream_audit(task, ai_result)
+            task.upstream_save_seconds = round(save_seconds, 3)
             history_prompt = f"[图生图] {task.prompt}" if task.mode != "text2img" else task.prompt
             history = GenerateHistory(
                 user_id=task.user_id,
@@ -314,6 +367,7 @@ async def process_task(task_id: int) -> None:
                 created_at=task.finished_at,
             )
             apply_upstream_audit(history, ai_result)
+            history.upstream_save_seconds = round(save_seconds, 3)
             db.add(history)
             await db.commit()
             total_seconds = time.monotonic() - task_started_at
@@ -328,11 +382,13 @@ async def process_task(task_id: int) -> None:
                 return
 
             task.retry_count += 1
-            task.error_message = str(e)
+            task.error_message = task_error_message(e)
+            apply_upstream_error_audit(task, e)
             task.progress_stage = "retrying"
             task.progress_message = "生成失败，正在准备重试。"
             task.locked_at = None
 
+            # 可能已消耗上游额度或需要管理员介入的错误不重试，直接本地退款。
             can_retry = not isinstance(
                 e,
                 (
@@ -341,8 +397,8 @@ async def process_task(task_id: int) -> None:
                     AIResponseBodyTimeoutError,
                     AIAuthenticationError,
                     AIInsufficientCreditsError,
+                    AINoAvailableApiConfigError,
                     AIUnsupportedParameterError,
-                    AIUpstreamServerError,
                     AITimeoutError,
                 ),
             ) and task.retry_count <= task.max_retries

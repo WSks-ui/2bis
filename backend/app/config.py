@@ -17,6 +17,13 @@ API_KEY_ENCRYPTION_SECRET: str = os.getenv("API_KEY_ENCRYPTION_SECRET", "")
 API_KEY_CONFIG_CACHE_SECONDS: float = float(os.getenv("API_KEY_CONFIG_CACHE_SECONDS", "5"))
 API_KEY_CIRCUIT_FAILURE_THRESHOLD: int = int(os.getenv("API_KEY_CIRCUIT_FAILURE_THRESHOLD", "3"))
 API_KEY_CIRCUIT_COOLDOWN_SECONDS: int = int(os.getenv("API_KEY_CIRCUIT_COOLDOWN_SECONDS", "600"))
+API_KEY_PROBE_TIMEOUT: float = float(os.getenv("API_KEY_PROBE_TIMEOUT", "360"))
+API_KEY_ALLOW_ENV_FALLBACK: bool = os.getenv("API_KEY_ALLOW_ENV_FALLBACK", "false").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 AI_API_URL: str = os.getenv("AI_API_URL", "https://www.aiartmirror.com/v1")
 AI_API_KEY: str = os.getenv("AI_API_KEY", "")
 AI_TIMEOUT: int = int(os.getenv("AI_TIMEOUT", "2400"))

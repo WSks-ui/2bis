@@ -64,6 +64,13 @@ class GenerateResponse(BaseModel):
     upstream_request_id: Optional[str] = None
     upstream_content_type: Optional[str] = None
     upstream_elapsed_seconds: Optional[float] = None
+    upstream_header_seconds: Optional[float] = None
+    upstream_body_seconds: Optional[float] = None
+    upstream_parse_seconds: Optional[float] = None
+    upstream_save_seconds: Optional[float] = None
+    upstream_body_bytes: Optional[int] = None
+    upstream_content_length: Optional[int] = None
+    upstream_transfer_encoding: Optional[str] = None
     upstream_payload_length: Optional[int] = None
     created_at: datetime
 
@@ -88,6 +95,13 @@ class GenerationTaskResponse(BaseModel):
     upstream_request_id: Optional[str] = None
     upstream_content_type: Optional[str] = None
     upstream_elapsed_seconds: Optional[float] = None
+    upstream_header_seconds: Optional[float] = None
+    upstream_body_seconds: Optional[float] = None
+    upstream_parse_seconds: Optional[float] = None
+    upstream_save_seconds: Optional[float] = None
+    upstream_body_bytes: Optional[int] = None
+    upstream_content_length: Optional[int] = None
+    upstream_transfer_encoding: Optional[str] = None
     upstream_payload_length: Optional[int] = None
     progress_stage: Optional[str] = None
     progress_message: Optional[str] = None
@@ -118,6 +132,13 @@ class HistoryItem(BaseModel):
     upstream_request_id: Optional[str] = None
     upstream_content_type: Optional[str] = None
     upstream_elapsed_seconds: Optional[float] = None
+    upstream_header_seconds: Optional[float] = None
+    upstream_body_seconds: Optional[float] = None
+    upstream_parse_seconds: Optional[float] = None
+    upstream_save_seconds: Optional[float] = None
+    upstream_body_bytes: Optional[int] = None
+    upstream_content_length: Optional[int] = None
+    upstream_transfer_encoding: Optional[str] = None
     upstream_payload_length: Optional[int] = None
     created_at: datetime
 
