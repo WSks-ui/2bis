@@ -26,6 +26,7 @@ const dotEl = ref(null)
 
 const target = { x: 0, y: 0 }
 const dot = { x: 0, y: 0 }
+const previousDot = { x: 0, y: 0 }
 let mediaQuery = null
 let rafId = 0
 
@@ -115,11 +116,20 @@ function updateHoverState(targetElement) {
 function renderCursor() {
   if (!enabled.value) return
 
+  previousDot.x = dot.x
+  previousDot.y = dot.y
   dot.x += (target.x - dot.x) * 0.26
   dot.y += (target.y - dot.y) * 0.26
 
   if (dotEl.value) {
-    dotEl.value.style.transform = `translate3d(${dot.x}px, ${dot.y}px, 0)`
+    const vx = dot.x - previousDot.x
+    const vy = dot.y - previousDot.y
+    const speed = Math.min(1, Math.hypot(vx, vy) / 42)
+    const angle = Math.atan2(vy, vx) * 180 / Math.PI
+    const stretch = hoveringInput.value ? 1 : 1 + speed * 0.32
+    const squash = hoveringInput.value ? 1 : 1 - speed * 0.12
+    dotEl.value.style.transform = `translate3d(${dot.x}px, ${dot.y}px, 0) rotate(${angle}deg) scale(${stretch}, ${squash})`
+    dotEl.value.style.opacity = String(0.68 + speed * 0.18)
   }
 
   rafId = requestAnimationFrame(renderCursor)
@@ -146,7 +156,7 @@ function renderCursor() {
   top: 0;
   left: 0;
   pointer-events: none;
-  will-change: transform, opacity;
+  will-change: transform, opacity, width, height;
 }
 
 .cursor-dot {

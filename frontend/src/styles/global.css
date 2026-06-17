@@ -284,6 +284,37 @@ button {
   overflow: hidden;
 }
 
+.motion-spotlight-host {
+  position: relative;
+  overflow: hidden;
+}
+
+.motion-spotlight-glow {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.7) 0%, rgba(60, 110, 232, 0.12) 36%, transparent 68%);
+  opacity: 0;
+  mix-blend-mode: screen;
+  transform: translate3d(-50%, -50%, 0) scale(0.88);
+  transition:
+    opacity 220ms var(--ease-standard),
+    transform 420ms var(--ease-out-soft);
+  will-change: left, top, opacity, transform;
+}
+
+.motion-spotlight-host.is-spotlight-active > .motion-spotlight-glow {
+  opacity: 1;
+  transform: translate3d(-50%, -50%, 0) scale(1);
+}
+
+.motion-spotlight-host > :not(.motion-spotlight-glow):not(.motion-ripple) {
+  position: relative;
+  z-index: 1;
+}
+
 .motion-ripple {
   position: absolute;
   z-index: 0;
@@ -426,6 +457,10 @@ button {
   }
 
   .motion-ripple {
+    display: none;
+  }
+
+  .motion-spotlight-glow {
     display: none;
   }
 }

@@ -496,6 +496,28 @@ function formatTime(timeStr) {
   padding: 22px;
   display: grid;
   gap: 18px;
+  overflow: hidden;
+}
+
+.filter-panel::before,
+.history-stats::before,
+.history-table::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.58), transparent 36%),
+    radial-gradient(circle at 18% 0%, rgba(60, 110, 232, 0.08), transparent 15rem);
+  opacity: 0;
+  transition: opacity var(--transition-base);
+}
+
+.filter-panel:hover::before,
+.history-stats:hover::before,
+.history-table:hover::before {
+  opacity: 1;
 }
 
 .filter-head {
@@ -623,6 +645,8 @@ function formatTime(timeStr) {
 }
 
 .history-stats {
+  position: relative;
+  overflow: hidden;
   min-width: 330px;
   padding: 17px;
   display: grid;
@@ -675,6 +699,7 @@ function formatTime(timeStr) {
 }
 
 .history-table {
+  position: relative;
   overflow: hidden;
   transition: opacity var(--transition-base);
 }
@@ -688,6 +713,8 @@ function formatTime(timeStr) {
 }
 
 .history-row {
+  position: relative;
+  overflow: hidden;
   min-height: 88px;
   padding: 13px 16px;
   display: grid;
@@ -703,7 +730,9 @@ function formatTime(timeStr) {
 
 .history-row:hover {
   background: rgba(255, 255, 255, 0.62);
-  box-shadow: inset 3px 0 0 rgba(60, 110, 232, 0.26);
+  box-shadow:
+    inset 3px 0 0 rgba(60, 110, 232, 0.26),
+    0 10px 26px rgba(23, 23, 23, 0.055);
   transform: translateX(3px);
 }
 
@@ -778,6 +807,17 @@ function formatTime(timeStr) {
 .history-row:hover .record-tags span {
   background: rgba(60, 110, 232, 0.07);
   color: var(--color-blue);
+  transform: translateY(-1px);
+}
+
+.cost-cell,
+.time-cell {
+  transition: color var(--transition-base), transform var(--transition-base);
+}
+
+.history-row:hover .cost-cell,
+.history-row:hover .time-cell {
+  color: var(--color-ink);
   transform: translateY(-1px);
 }
 
@@ -875,6 +915,12 @@ function formatTime(timeStr) {
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.82);
   box-shadow: var(--shadow-sm);
+  transition: transform var(--transition-base), box-shadow var(--transition-base);
+}
+
+.pagination-bar:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
 }
 
 .pagination-bar button {

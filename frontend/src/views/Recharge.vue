@@ -315,6 +315,8 @@ async function mockPay() {
 }
 
 .balance-card {
+  position: relative;
+  overflow: hidden;
   min-height: 138px;
   padding: 20px;
   display: grid;
@@ -327,6 +329,27 @@ async function mockPay() {
   border-color: rgba(60, 110, 232, 0.2);
   transform: translateY(-3px);
   box-shadow: var(--shadow-md);
+}
+
+.balance-card::before,
+.plan-card::before,
+.workflow-section::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.62), transparent 34%),
+    radial-gradient(circle at 20% 0%, rgba(60, 110, 232, 0.09), transparent 16rem);
+  opacity: 0;
+  transition: opacity var(--transition-base);
+}
+
+.balance-card:hover::before,
+.plan-card:hover::before,
+.workflow-section:hover::before {
+  opacity: 1;
 }
 
 .balance-card span {
@@ -456,6 +479,13 @@ async function mockPay() {
   box-shadow: 0 0 0 1px var(--color-ink), var(--shadow-md);
 }
 
+.plan-card.featured:hover {
+  box-shadow:
+    0 0 0 1px var(--color-ink),
+    0 26px 70px rgba(60, 110, 232, 0.14),
+    var(--shadow-md);
+}
+
 .recommend-tag {
   position: absolute;
   top: -14px;
@@ -483,6 +513,12 @@ async function mockPay() {
   font-size: 36px;
   font-weight: 850;
   letter-spacing: -0.04em;
+  transition: transform var(--transition-base), color var(--transition-base);
+}
+
+.plan-card:hover .plan-price {
+  color: var(--color-blue);
+  transform: translateY(-2px);
 }
 
 .plan-price span {
@@ -542,6 +578,8 @@ async function mockPay() {
 }
 
 .workflow-section {
+  position: relative;
+  overflow: hidden;
   margin-top: 32px;
   padding: 26px;
   display: grid;
@@ -561,6 +599,8 @@ async function mockPay() {
 }
 
 .workflow-card {
+  position: relative;
+  overflow: hidden;
   padding: 17px;
   border: 1px solid var(--color-line);
   border-radius: var(--radius-md);

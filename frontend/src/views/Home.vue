@@ -507,6 +507,27 @@ function handleSubmit() {
   transform-origin: 20% 0;
 }
 
+.tool-panel::before,
+.prompt-card::before,
+.task-log::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.66), transparent 32%),
+    radial-gradient(circle at 14% 0%, rgba(60, 110, 232, 0.08), transparent 17rem);
+  opacity: 0;
+  transition: opacity var(--transition-base);
+}
+
+.tool-panel:hover::before,
+.prompt-card:hover::before,
+.task-log:hover::before {
+  opacity: 1;
+}
+
 .panel-section + .panel-section {
   margin-top: 25px;
 }
@@ -593,6 +614,8 @@ function handleSubmit() {
 }
 
 .workflow-card {
+  position: relative;
+  overflow: hidden;
   width: 100%;
   min-height: 68px;
   padding: 12px;
@@ -651,6 +674,8 @@ function handleSubmit() {
 }
 
 .workflow-detail {
+  position: relative;
+  overflow: hidden;
   margin-top: 12px;
   padding: 12px;
   display: grid;
@@ -675,6 +700,8 @@ function handleSubmit() {
 }
 
 .choice-card {
+  position: relative;
+  overflow: hidden;
   min-height: 48px;
   padding: 9px;
   display: grid;
@@ -719,6 +746,8 @@ function handleSubmit() {
 }
 
 .resolution-button {
+  position: relative;
+  overflow: hidden;
   min-height: 42px;
   padding: 8px 11px;
   display: flex;
@@ -775,6 +804,7 @@ function handleSubmit() {
 }
 
 .prompt-card {
+  position: relative;
   padding: 22px;
   overflow: hidden;
 }
@@ -827,6 +857,11 @@ function handleSubmit() {
   transform: translateY(-1px);
 }
 
+.prompt-card:focus-within {
+  border-color: rgba(60, 110, 232, 0.2);
+  box-shadow: 0 18px 54px rgba(60, 110, 232, 0.09);
+}
+
 .prompt-actions {
   margin-top: 12px;
 }
@@ -855,6 +890,8 @@ function handleSubmit() {
 }
 
 .generate-bar {
+  position: relative;
+  overflow: hidden;
   padding: 10px;
   display: grid;
   grid-template-columns: 1fr 74px;
@@ -894,6 +931,8 @@ function handleSubmit() {
 }
 
 .task-log {
+  position: relative;
+  overflow: hidden;
   padding: 20px;
 }
 
@@ -932,6 +971,8 @@ function handleSubmit() {
 }
 
 .log-row {
+  position: relative;
+  overflow: hidden;
   min-height: 45px;
   display: grid;
   grid-template-columns: auto minmax(220px, 1fr) 88px 112px 78px;
@@ -1019,11 +1060,35 @@ function handleSubmit() {
 }
 
 .gallery-empty {
+  position: relative;
+  overflow: hidden;
   min-height: 230px;
   display: grid;
   place-items: center;
   text-align: center;
-  animation: gallery-breathe 4.8s ease-in-out infinite;
+  isolation: isolate;
+  animation: gallery-breathe 5.6s ease-in-out infinite;
+}
+
+.gallery-empty::before {
+  content: '';
+  position: absolute;
+  inset: 18px;
+  z-index: -1;
+  border-radius: 26px;
+  background:
+    linear-gradient(90deg, rgba(23, 23, 23, 0.04) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(23, 23, 23, 0.035) 1px, transparent 1px),
+    radial-gradient(circle at 50% 42%, rgba(60, 110, 232, 0.11), transparent 14rem);
+  background-size: 34px 34px, 34px 34px, auto;
+  opacity: 0.72;
+  transform: scale(0.98);
+  transition: transform var(--transition-slow), opacity var(--transition-base);
+}
+
+.gallery-empty:hover::before {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .gallery-empty h1 {
