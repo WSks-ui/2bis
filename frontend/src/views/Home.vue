@@ -1,8 +1,8 @@
 <template>
   <div class="home-page paper-page">
     <main class="studio-shell">
-      <aside class="tool-panel surface-card">
-        <section class="panel-section">
+      <aside v-reveal class="tool-panel surface-card">
+        <section v-reveal="40" class="panel-section">
           <div class="section-title">生成模式</div>
           <div class="mode-grid">
             <button
@@ -18,7 +18,7 @@
           </div>
         </section>
 
-        <section class="panel-section">
+        <section v-reveal="80" class="panel-section">
           <div class="section-title">工作流</div>
           <div class="workflow-list">
             <button
@@ -53,7 +53,7 @@
           </div>
         </section>
 
-        <section class="panel-section">
+        <section v-reveal="120" class="panel-section">
           <div class="section-title">质量</div>
           <div class="choice-grid three">
             <button
@@ -69,7 +69,7 @@
           </div>
         </section>
 
-        <section class="panel-section">
+        <section v-reveal="160" class="panel-section">
           <div class="section-title">尺寸比例</div>
           <div class="ratio-scroll">
             <button
@@ -96,6 +96,7 @@
           </div>
         </section>
 
+        <Transition name="modal-pop">
         <section v-if="needImage" class="panel-section">
           <div class="section-title">{{ imageInputTitle }}</div>
           <button class="upload-card" type="button" @click="triggerUpload">
@@ -105,10 +106,11 @@
             <strong>{{ imageInputAction }}</strong>
           </button>
         </section>
+        </Transition>
       </aside>
 
       <section class="studio-main">
-        <section class="prompt-card surface-card">
+        <section v-reveal="80" class="prompt-card surface-card">
           <div class="prompt-head">
             <label for="prompt-input">提示词</label>
             <span>{{ prompt.length }}/1000</span>
@@ -133,14 +135,14 @@
           </div>
         </section>
 
-        <section class="generate-bar surface-card">
+        <section v-reveal="130" class="generate-bar surface-card">
           <button class="btn-black generate-button" :disabled="!canSubmit" @click="handleSubmit">
             <span>{{ canSubmit ? `生成（消耗 ${currentCost} 额度）` : '填写提示词后生成' }}</span>
           </button>
           <button class="tune-button" type="button" @click="focusPanel">参数</button>
         </section>
 
-        <section class="task-log surface-card">
+        <section v-reveal="180" class="task-log surface-card">
           <div class="block-head">
             <div>
               <h2>任务日志</h2>
@@ -153,7 +155,7 @@
             暂无任务。输入提示词后会先进入队列，失败任务会自动退款。
           </div>
 
-          <div v-else class="log-list">
+          <TransitionGroup v-else name="list" tag="div" class="log-list">
             <article v-for="task in recentTasks" :key="task.id" class="log-row">
               <span class="status-dot" :class="`status-${task.status}`"></span>
               <div class="log-prompt">
@@ -164,10 +166,10 @@
               <span>{{ task.workflowType === 'professional' ? '专业工作流' : '标准生成' }}</span>
               <span>{{ task.workflowCost || task.pointsCost || qualityCost(task.quality) }} 额度</span>
             </article>
-          </div>
+          </TransitionGroup>
         </section>
 
-        <section class="results-section">
+        <section v-reveal="230" class="results-section">
           <div class="block-head results-head">
             <div>
               <h2>结果画廊</h2>
@@ -184,14 +186,14 @@
             <p>选择模式、工作流、质量和尺寸，然后描述你要生成的画面。</p>
           </div>
 
-          <div v-else class="gallery-grid">
+          <TransitionGroup v-else name="list" tag="div" class="gallery-grid">
             <TaskCard
               v-for="task in sortedTasks"
               :key="task.id"
               :task="task"
               @remove="tasksStore.removeTask(task.id)"
             />
-          </div>
+          </TransitionGroup>
         </section>
       </section>
     </main>
@@ -502,6 +504,7 @@ function handleSubmit() {
   min-width: 0;
   overflow: hidden;
   padding: 24px;
+  transform-origin: 20% 0;
 }
 
 .panel-section + .panel-section {
@@ -544,7 +547,13 @@ function handleSubmit() {
   color: var(--color-ink);
   cursor: pointer;
   font-family: var(--font-ui);
-  transition: border-color var(--transition-base), background var(--transition-base), transform var(--transition-base), box-shadow var(--transition-base);
+  transform: translateZ(0);
+  transition:
+    border-color var(--transition-base),
+    background var(--transition-base),
+    color var(--transition-base),
+    transform var(--transition-base),
+    box-shadow var(--transition-base);
 }
 
 .mode-button {
@@ -560,6 +569,7 @@ function handleSubmit() {
 .mode-button span {
   color: var(--color-blue);
   font-size: 14px;
+  transition: transform var(--transition-base), color var(--transition-base);
 }
 
 .mode-button.active,
@@ -570,6 +580,11 @@ function handleSubmit() {
   border-color: var(--color-blue);
   background: rgba(60, 110, 232, 0.07);
   box-shadow: 0 0 0 1px rgba(60, 110, 232, 0.1);
+  transform: translateY(-1px);
+}
+
+.mode-button.active span {
+  transform: translateY(-1px) rotate(-6deg);
 }
 
 .workflow-list {
@@ -599,6 +614,14 @@ function handleSubmit() {
   background: var(--color-paper-soft);
   color: var(--color-ink);
   font-weight: 900;
+  transition: background var(--transition-base), color var(--transition-base), transform var(--transition-base);
+}
+
+.workflow-card.active .workflow-mark,
+.workflow-card:hover .workflow-mark {
+  background: var(--color-blue);
+  color: #fff;
+  transform: rotate(-8deg) scale(1.04);
 }
 
 .workflow-copy {
@@ -620,6 +643,11 @@ function handleSubmit() {
 .workflow-arrow {
   color: var(--color-blue);
   font-size: 18px;
+  transition: transform var(--transition-base);
+}
+
+.workflow-card:hover .workflow-arrow {
+  transform: translateX(3px);
 }
 
 .workflow-detail {
@@ -630,6 +658,7 @@ function handleSubmit() {
   border: 1px solid rgba(60, 110, 232, 0.18);
   border-radius: var(--radius-md);
   background: rgba(60, 110, 232, 0.045);
+  animation: detail-in 380ms var(--ease-out-soft) both;
 }
 
 .workflow-detail div {
@@ -724,6 +753,7 @@ function handleSubmit() {
   height: 76px;
   object-fit: cover;
   border-radius: var(--radius-sm);
+  animation: image-pop 360ms var(--ease-out-soft) both;
 }
 
 .upload-placeholder {
@@ -746,6 +776,7 @@ function handleSubmit() {
 
 .prompt-card {
   padding: 22px;
+  overflow: hidden;
 }
 
 .prompt-head,
@@ -778,7 +809,11 @@ function handleSubmit() {
   font-size: 16px;
   line-height: 1.8;
   outline: none;
-  transition: border-color var(--transition-base), box-shadow var(--transition-base);
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base),
+    background var(--transition-base),
+    transform var(--transition-base);
 }
 
 .prompt-input::placeholder {
@@ -788,6 +823,8 @@ function handleSubmit() {
 .prompt-input:focus {
   border-color: var(--color-blue);
   box-shadow: 0 0 0 4px rgba(60, 110, 232, 0.08);
+  background: rgba(255, 255, 255, 0.92);
+  transform: translateY(-1px);
 }
 
 .prompt-actions {
@@ -823,6 +860,7 @@ function handleSubmit() {
   grid-template-columns: 1fr 74px;
   gap: 10px;
   align-items: center;
+  transform-origin: center;
 }
 
 .generate-button {
@@ -830,6 +868,23 @@ function handleSubmit() {
   font-family: var(--font-ui);
   font-size: 16px;
   font-weight: 850;
+  isolation: isolate;
+}
+
+.generate-button:not(:disabled)::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  background: linear-gradient(110deg, transparent 0%, rgba(255, 255, 255, 0.18) 45%, transparent 62%);
+  opacity: 0;
+  transform: translateX(-36%);
+  transition: opacity var(--transition-base), transform 620ms var(--ease-out-soft);
+}
+
+.generate-button:hover:not(:disabled)::after {
+  opacity: 1;
+  transform: translateX(36%);
 }
 
 .tune-button {
@@ -873,6 +928,7 @@ function handleSubmit() {
 .log-list {
   display: grid;
   gap: 2px;
+  position: relative;
 }
 
 .log-row {
@@ -885,6 +941,17 @@ function handleSubmit() {
   color: var(--color-muted);
   font-family: var(--font-ui);
   font-size: 12px;
+  border-radius: var(--radius-sm);
+  transition:
+    background var(--transition-base),
+    transform var(--transition-base),
+    box-shadow var(--transition-base);
+}
+
+.log-row:hover {
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow: inset 0 0 0 1px rgba(226, 229, 223, 0.76);
+  transform: translateX(3px);
 }
 
 .log-row:last-child {
@@ -956,6 +1023,7 @@ function handleSubmit() {
   display: grid;
   place-items: center;
   text-align: center;
+  animation: gallery-breathe 4.8s ease-in-out infinite;
 }
 
 .gallery-empty h1 {
@@ -971,6 +1039,7 @@ function handleSubmit() {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: 16px;
+  position: relative;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1002,6 +1071,19 @@ function handleSubmit() {
 .block-head button:hover {
   transform: translateY(-1px);
   border-color: var(--color-line-strong);
+  box-shadow: 0 12px 28px rgba(23, 23, 23, 0.07);
+}
+
+.mode-button:active,
+.choice-card:active,
+.workflow-card:active,
+.resolution-button:active,
+.ratio-pill:active,
+.upload-card:active,
+.prompt-actions button:active,
+.tune-button:active,
+.block-head button:active {
+  transform: translateY(0) scale(0.985);
 }
 
 @media (max-width: 1180px) {
@@ -1017,6 +1099,40 @@ function handleSubmit() {
 
   .log-row {
     grid-template-columns: auto minmax(170px, 1fr) 70px 90px 64px;
+  }
+}
+
+@keyframes detail-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes image-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes gallery-breathe {
+  0%, 100% {
+    box-shadow: var(--shadow-sm);
+  }
+
+  50% {
+    box-shadow: 0 22px 60px rgba(60, 110, 232, 0.09);
   }
 }
 

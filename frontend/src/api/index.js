@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { ElMessage } from '../services/toast'
+import { clearStoredToken, getStoredToken } from '../services/authToken'
 
 const api = axios.create({
   baseURL: '/api'
@@ -7,7 +8,7 @@ const api = axios.create({
 
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -22,7 +23,7 @@ api.interceptors.response.use(
     const requestUrl = error.config?.url || ''
     const isAuthLogin = requestUrl.includes('/auth/login')
     if (error.response && error.response.status === 401 && !isAuthLogin) {
-      localStorage.removeItem('token')
+      clearStoredToken()
       ElMessage.error('登录已过期，请重新登录')
       window.location.href = '/login'
     }

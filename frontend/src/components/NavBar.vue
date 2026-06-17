@@ -36,6 +36,7 @@
             <span class="chevron">⌄</span>
           </button>
 
+          <Transition name="modal-pop">
           <div v-if="userMenuOpen" class="user-popover" @click.stop>
             <div class="user-popover-head">
               <strong>{{ userStore.username || '未命名用户' }}</strong>
@@ -46,6 +47,7 @@
             <router-link v-if="userStore.isAdmin" to="/admin/api-keys" @click="userMenuOpen = false">API Key 控制台</router-link>
             <button type="button" class="logout-action" @click="logout">退出登录</button>
           </div>
+          </Transition>
         </div>
       </div>
     </div>
@@ -59,9 +61,11 @@
       </button>
     </nav>
 
+    <Transition name="modal-pop">
     <div v-if="checkinResult" class="checkin-toast" :class="{ 'toast-out': toastHiding }">
       签到成功，第 {{ checkinResult.day_number }} 天，+{{ checkinResult.reward }} 体验积分
     </div>
+    </Transition>
   </header>
 </template>
 
@@ -163,6 +167,7 @@ function logout() {
   border-bottom: 1px solid rgba(207, 212, 203, 0.82);
   background: rgba(251, 251, 248, 0.86);
   backdrop-filter: blur(22px);
+  animation: nav-drop 520ms var(--ease-out-soft) both;
 }
 
 .navbar-inner {
@@ -183,6 +188,11 @@ function logout() {
   width: max-content;
   color: var(--color-ink);
   text-decoration: none;
+  transition: transform var(--transition-base), color var(--transition-base);
+}
+
+.brand:hover {
+  transform: translateY(-1px) skewX(-3deg);
 }
 
 .brand-word {
@@ -191,6 +201,11 @@ function logout() {
   font-weight: 900;
   letter-spacing: -0.08em;
   font-style: italic;
+  transition: letter-spacing var(--transition-base);
+}
+
+.brand:hover .brand-word {
+  letter-spacing: -0.1em;
 }
 
 .brand-subtitle {
@@ -239,6 +254,10 @@ function logout() {
   color: var(--color-ink);
 }
 
+.nav-link:hover::after {
+  transform: scaleX(0.48);
+}
+
 .nav-link--active::after {
   transform: scaleX(1);
 }
@@ -256,6 +275,8 @@ function logout() {
 }
 
 .btn-checkin {
+  position: relative;
+  overflow: hidden;
   min-width: 64px;
   padding: 7px 14px;
   border: 1px solid var(--color-line-strong);
@@ -266,12 +287,17 @@ function logout() {
   font-family: var(--font-ui);
   font-size: 12px;
   font-weight: 800;
-  transition: transform var(--transition-base), border-color var(--transition-base);
+  transition: transform var(--transition-base), border-color var(--transition-base), box-shadow var(--transition-base);
 }
 
 .btn-checkin:hover:not(:disabled) {
   transform: translateY(-1px);
   border-color: var(--color-ink);
+  box-shadow: 0 8px 18px rgba(23, 23, 23, 0.08);
+}
+
+.btn-checkin:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
 }
 
 .btn-checkin:disabled {
@@ -288,6 +314,7 @@ function logout() {
   font-family: var(--font-ui);
   font-size: 12px;
   font-weight: 800;
+  animation: badge-in 420ms var(--ease-out-soft) both;
 }
 
 .user-menu {
@@ -302,6 +329,11 @@ function logout() {
   font-family: var(--font-ui);
   font-size: 13px;
   font-weight: 700;
+  transition: transform var(--transition-base), color var(--transition-base);
+}
+
+.user-menu:hover {
+  transform: translateY(-1px);
 }
 
 .user-menu-wrap {
@@ -321,6 +353,7 @@ function logout() {
   background: rgba(255, 255, 255, 0.96);
   box-shadow: var(--shadow-lg);
   backdrop-filter: blur(18px);
+  transform-origin: 90% 0;
 }
 
 .user-popover-head {
@@ -381,6 +414,12 @@ function logout() {
   color: #fff;
   font-size: 12px;
   font-weight: 900;
+  transition: transform var(--transition-base), box-shadow var(--transition-base);
+}
+
+.user-menu:hover .avatar {
+  transform: rotate(-6deg) scale(1.04);
+  box-shadow: 0 8px 20px rgba(23, 23, 23, 0.14);
 }
 
 .chevron {
@@ -478,7 +517,7 @@ function logout() {
     backdrop-filter: blur(18px);
   }
 
-  .mobile-tab {
+.mobile-tab {
     min-height: 42px;
     display: inline-flex;
     align-items: center;
@@ -491,15 +530,41 @@ function logout() {
     font-size: 12px;
     font-weight: 800;
     text-decoration: none;
+    transition: background var(--transition-base), color var(--transition-base), transform var(--transition-base);
   }
 
   .mobile-tab--active {
     background: var(--color-ink);
     color: #fff;
+    transform: translateY(-1px);
   }
 
   .mobile-tab-button:disabled {
     color: var(--color-green);
+  }
+}
+
+@keyframes nav-drop {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -12px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes badge-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -4px, 0) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
   }
 }
 </style>

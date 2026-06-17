@@ -32,6 +32,8 @@
       <span v-if="task.pointsCost">{{ task.pointsCost }} 额度</span>
       <span v-if="task.balanceSource">{{ sourceLabel }}</span>
       <span v-if="task.status === 'done' && timeLabel">{{ timeLabel }}</span>
+      <span v-if="upstreamTimingLabel">{{ upstreamTimingLabel }}</span>
+      <span v-if="upstreamTransferLabel">{{ upstreamTransferLabel }}</span>
       <span v-if="task.upstreamRequestQuality">请求质量 {{ task.upstreamRequestQuality }}</span>
       <span v-if="task.upstreamRequestId">上游 {{ shortRequestId }}</span>
       <button v-if="task.status === 'failed'" class="task-remove-btn" @click.stop="$emit('remove', task.id)">移除</button>
@@ -110,6 +112,22 @@ const workflowLabel = computed(() => {
   return map[props.task.workflowType] || props.task.workflowType
 })
 
+const upstreamTimingLabel = computed(() => {
+  if (!props.task.upstreamElapsedSeconds) return ''
+  const parts = [`上游 ${formatSeconds(props.task.upstreamElapsedSeconds)}`]
+  if (props.task.upstreamHeaderSeconds != null) parts.push(`等待 ${formatSeconds(props.task.upstreamHeaderSeconds)}`)
+  if (props.task.upstreamBodySeconds != null) parts.push(`接收 ${formatSeconds(props.task.upstreamBodySeconds)}`)
+  if (props.task.upstreamSaveSeconds != null) parts.push(`保存 ${formatSeconds(props.task.upstreamSaveSeconds)}`)
+  return parts.join(' / ')
+})
+
+const upstreamTransferLabel = computed(() => {
+  if (!props.task.upstreamBodyBytes) return ''
+  const transfer = props.task.upstreamTransferEncoding ? ` · ${props.task.upstreamTransferEncoding}` : ''
+  const total = props.task.upstreamContentLength ? ` / ${formatBytes(props.task.upstreamContentLength)}` : ''
+  return `传输 ${formatBytes(props.task.upstreamBodyBytes)}${total}${transfer}`
+})
+
 const timeLabel = computed(() => {
   const createdAt = parseDate(props.task.createdAt)
   if (!createdAt) return ''
@@ -153,6 +171,19 @@ function formatDuration(milliseconds) {
   return `${seconds}秒`
 }
 
+function formatSeconds(seconds) {
+  if (!Number.isFinite(seconds)) return ''
+  if (seconds < 10) return `${seconds.toFixed(1)}s`
+  return `${Math.round(seconds)}s`
+}
+
+function formatBytes(value) {
+  const size = Number(value) || 0
+  if (size < 1024) return `${size}B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)}KB`
+  return `${(size / 1024 / 1024).toFixed(1)}MB`
+}
+
 function downloadImage() {
   if (!props.task.imageUrl) return
   const a = document.createElement('a')
@@ -167,6 +198,7 @@ function downloadImage() {
 
 <style scoped>
 .task-card {
+  position: relative;
   overflow: hidden;
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-line);
@@ -174,12 +206,33 @@ function downloadImage() {
   box-shadow: var(--shadow-sm);
   content-visibility: auto;
   contain-intrinsic-size: 360px 460px;
-  transition: transform var(--transition-base), box-shadow var(--transition-base);
+  transform: translateZ(0);
+  transition:
+    border-color var(--transition-base),
+    transform var(--transition-base),
+    box-shadow var(--transition-base),
+    filter var(--transition-base);
 }
 
 .task-card:hover {
-  transform: translateY(-2px);
+  border-color: rgba(60, 110, 232, 0.22);
+  transform: translateY(-4px) scale(1.01);
   box-shadow: var(--shadow-md);
+}
+
+.task-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(130deg, rgba(255, 255, 255, 0.34), transparent 32%);
+  opacity: 0;
+  transition: opacity var(--transition-base);
+}
+
+.task-card:hover::after {
+  opacity: 1;
 }
 
 .task-image-wrap,
@@ -196,6 +249,15 @@ function downloadImage() {
   height: 100%;
   object-fit: cover;
   display: block;
+  opacity: 0;
+  transform: scale(1.02);
+  animation: task-image-in 520ms var(--ease-out-soft) forwards;
+  transition: transform 520ms var(--ease-out-soft), filter var(--transition-base);
+}
+
+.task-card:hover .task-image {
+  transform: scale(1.055);
+  filter: saturate(1.04) contrast(1.02);
 }
 
 .task-image-actions {
@@ -204,6 +266,14 @@ function downloadImage() {
   bottom: 10px;
   display: flex;
   gap: 6px;
+  opacity: 0;
+  transform: translate3d(0, 8px, 0);
+  transition: opacity var(--transition-base), transform var(--transition-base);
+}
+
+.task-card:hover .task-image-actions {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
 }
 
 .task-action-btn,
@@ -221,6 +291,19 @@ function downloadImage() {
 .task-action-btn {
   width: 32px;
   height: 32px;
+  transition: transform var(--transition-base), background var(--transition-base), box-shadow var(--transition-base);
+}
+
+.task-action-btn:hover,
+.task-remove-btn:hover {
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 10px 20px rgba(23, 23, 23, 0.12);
+  transform: translateY(-1px);
+}
+
+.task-action-btn:active,
+.task-remove-btn:active {
+  transform: translateY(0) scale(0.96);
 }
 
 .task-pending {
@@ -268,6 +351,7 @@ function downloadImage() {
   border-radius: 50%;
   background: currentColor;
   box-shadow: 0 0 14px currentColor;
+  animation: task-dot 1.2s ease-in-out infinite;
 }
 
 .task-pending p {
@@ -311,5 +395,51 @@ function downloadImage() {
 
 .task-card--done .task-meta span:first-child {
   color: var(--color-green);
+}
+
+.task-card--done .status-dot,
+.task-card--failed .status-dot {
+  animation: none;
+}
+
+.task-card--generating .task-pending::before,
+.task-card--queued .task-pending::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(110deg, transparent 0%, rgba(255, 255, 255, 0.64) 46%, transparent 62%),
+    transparent;
+  transform: translateX(-120%);
+  animation: pending-sheen 2.1s ease-in-out infinite;
+}
+
+@keyframes task-image-in {
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes task-dot {
+  0%, 100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.55);
+  }
+}
+
+@keyframes pending-sheen {
+  0% {
+    transform: translateX(-120%);
+  }
+
+  52%, 100% {
+    transform: translateX(120%);
+  }
 }
 </style>

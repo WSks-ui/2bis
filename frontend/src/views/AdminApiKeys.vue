@@ -1,7 +1,7 @@
 <template>
   <div class="admin-page paper-page">
     <main class="admin-shell">
-      <section class="admin-hero">
+      <section v-reveal class="admin-hero">
         <div>
           <p class="eyebrow">Admin Console</p>
           <h1>API Key 控制台</h1>
@@ -15,7 +15,7 @@
       </section>
 
       <section class="admin-grid">
-        <form class="surface-card key-form" autocomplete="off" @submit.prevent="submitForm">
+        <form v-reveal="100" class="surface-card key-form" autocomplete="off" @submit.prevent="submitForm">
           <div class="section-head">
             <p class="eyebrow">{{ editingId ? 'Edit Key' : 'New Key' }}</p>
             <h2>{{ editingId ? '编辑配置' : '添加 API Key' }}</h2>
@@ -79,10 +79,10 @@
             <button v-if="editingId" class="btn-ghost" type="button" @click="resetForm">取消编辑</button>
           </div>
 
-          <p class="form-note">当前上游 aiartmirror 不支持 response_format，默认保持“不发送”。部分兼容接口示例未包含 quality，可关闭“发送 quality 参数”。点击“测试”会发起一次 low 质量生图请求，可能产生上游成本。</p>
+          <p class="form-note">当前 aiartmirror 与 zilan520 默认不发送 response_format；zilan520 已支持 quality 参数，可保持“发送 quality 参数”。点击“测试”只会请求 /models 验证 Key 与 Base URL，不会发起生图请求。</p>
         </form>
 
-        <section class="surface-card key-list">
+        <section v-reveal="150" class="surface-card key-list">
           <div class="section-head row">
             <div>
               <p class="eyebrow">Runtime Keys</p>
@@ -93,9 +93,12 @@
             </button>
           </div>
 
+          <Transition name="modal-pop" mode="out-in">
           <div v-if="loading && !apiKeys.length" class="empty-state">加载中...</div>
           <div v-else-if="!apiKeys.length" class="empty-state">还没有数据库 API Key，系统会继续使用 .env 配置。</div>
+          </Transition>
 
+          <TransitionGroup name="list" tag="div" class="key-card-list">
           <article v-for="item in apiKeys" :key="item.id" class="key-card" :class="{ active: item.is_active }">
             <div class="key-main">
               <div>
@@ -155,6 +158,7 @@
               <button class="btn-danger" type="button" :disabled="item.is_active" @click="deleteKey(item)">删除</button>
             </div>
           </article>
+          </TransitionGroup>
         </section>
       </section>
     </main>
@@ -271,7 +275,7 @@ async function testSavedKey(item) {
   try {
     const res = await api.post(`/admin/api-keys/${item.id}/test`, {})
     if (res.data.ok) {
-      ElMessage.success('连接测试成功')
+      ElMessage.success(res.data.message || '连接测试成功')
     } else {
       ElMessage.warning(res.data.message || '连接测试失败')
     }
@@ -358,6 +362,11 @@ function formatDate(value) {
   display: grid;
   align-content: center;
   gap: 8px;
+  overflow: hidden;
+}
+
+.status-card:hover {
+  transform: translateY(-3px);
 }
 
 .status-card span,
@@ -433,11 +442,19 @@ function formatDate(value) {
   background: rgba(255, 255, 255, 0.76);
   color: var(--color-ink);
   outline: none;
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base),
+    background var(--transition-base),
+    transform var(--transition-base);
 }
 
 .key-form input:focus,
 .key-form select:focus {
   border-color: var(--color-ink);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 0 0 4px rgba(23, 23, 23, 0.06);
+  transform: translateY(-1px);
 }
 
 .check-line {
@@ -462,6 +479,8 @@ function formatDate(value) {
 
 .btn-ghost,
 .btn-danger {
+  position: relative;
+  overflow: hidden;
   min-height: 38px;
   padding: 0 13px;
   border-radius: var(--radius-md);
@@ -469,6 +488,12 @@ function formatDate(value) {
   font-family: var(--font-ui);
   font-size: 12px;
   font-weight: 850;
+  transition:
+    border-color var(--transition-base),
+    background var(--transition-base),
+    color var(--transition-base),
+    transform var(--transition-base),
+    box-shadow var(--transition-base);
 }
 
 .btn-ghost {
@@ -489,6 +514,18 @@ function formatDate(value) {
   cursor: not-allowed;
 }
 
+.btn-ghost:hover:not(:disabled),
+.btn-danger:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 10px 22px rgba(23, 23, 23, 0.08);
+  transform: translateY(-1px);
+}
+
+.btn-ghost:active:not(:disabled),
+.btn-danger:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
+}
+
 .empty-state {
   padding: 40px 16px;
   border: 1px dashed var(--color-line-strong);
@@ -504,6 +541,15 @@ function formatDate(value) {
   border: 1px solid var(--color-line);
   border-radius: var(--radius-lg);
   background: rgba(255, 255, 255, 0.58);
+  transition:
+    border-color var(--transition-base),
+    background var(--transition-base),
+    transform var(--transition-base),
+    box-shadow var(--transition-base);
+}
+
+.key-card-list {
+  position: relative;
 }
 
 .key-card + .key-card {
@@ -513,6 +559,13 @@ function formatDate(value) {
 .key-card.active {
   border-color: rgba(63, 140, 104, 0.42);
   box-shadow: 0 0 0 1px rgba(63, 140, 104, 0.12);
+}
+
+.key-card:hover {
+  border-color: rgba(60, 110, 232, 0.22);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-3px);
 }
 
 .key-title {
@@ -541,6 +594,7 @@ function formatDate(value) {
   font-family: var(--font-ui);
   font-size: 11px;
   font-weight: 900;
+  animation: pill-in 360ms var(--ease-out-soft) both;
 }
 
 .active-pill {
@@ -568,6 +622,11 @@ function formatDate(value) {
   font-size: 12px;
   font-weight: 900;
   text-align: center;
+  transition: transform var(--transition-base), background var(--transition-base), color var(--transition-base);
+}
+
+.key-card:hover .test-state {
+  transform: translateY(-1px);
 }
 
 .test-state.success {
@@ -590,6 +649,12 @@ function formatDate(value) {
   padding: 10px;
   border-radius: var(--radius-md);
   background: rgba(245, 246, 241, 0.74);
+  transition: transform var(--transition-base), background var(--transition-base);
+}
+
+.key-card:hover .meta-grid div {
+  background: rgba(245, 246, 241, 0.96);
+  transform: translateY(-1px);
 }
 
 .meta-grid dd {
@@ -608,11 +673,36 @@ function formatDate(value) {
   color: var(--color-muted);
   font-size: 12px;
   word-break: break-word;
+  animation: message-in 320ms var(--ease-out-soft) both;
 }
 
 .danger-message {
   background: rgba(200, 77, 60, 0.08);
   color: var(--color-red);
+}
+
+@keyframes pill-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -3px, 0) scale(0.94);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes message-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
 }
 
 .card-actions {

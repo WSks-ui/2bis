@@ -3,10 +3,13 @@
     <div class="noise-overlay"></div>
     <CustomCursor />
     <NavBar v-if="showAppNav" />
-    <router-view v-slot="{ Component }">
-      <KeepAlive include="Home,History,Recharge" :max="3">
-        <component :is="Component" />
-      </KeepAlive>
+    <router-view v-slot="{ Component, route }">
+      <Transition v-if="route.meta.requiresAuth" name="route-fade" mode="out-in">
+        <KeepAlive include="Home,History,Recharge" :max="3">
+          <component :is="Component" :key="route.name" />
+        </KeepAlive>
+      </Transition>
+      <component v-else :is="Component" />
     </router-view>
   </div>
 </template>
@@ -51,6 +54,7 @@ function isEditableTarget(target) {
   position: relative;
   min-height: 100vh;
   background: var(--color-paper);
+  overflow-x: hidden;
 }
 
 .noise-overlay {

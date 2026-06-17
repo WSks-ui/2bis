@@ -1,7 +1,7 @@
 <template>
   <div class="history-page paper-page">
     <main class="history-shell">
-      <aside class="filter-panel surface-card">
+      <aside v-reveal class="filter-panel surface-card">
         <div class="filter-head">
           <h2>筛选</h2>
           <button type="button" @click="resetFilters">清空</button>
@@ -50,7 +50,7 @@
       </aside>
 
       <section class="history-main">
-        <header class="history-hero">
+        <header v-reveal="70" class="history-hero">
           <div>
             <p class="eyebrow">Generation History</p>
             <h1>历史记录</h1>
@@ -72,6 +72,7 @@
           </div>
         </header>
 
+        <Transition name="modal-pop" mode="out-in">
         <div v-if="loading" class="state-area surface-card">加载中...</div>
 
         <div v-else-if="!filteredRecords.length" class="state-area surface-card">
@@ -80,6 +81,7 @@
         </div>
 
         <section v-else class="history-table surface-card" :class="{ 'is-page-loading': pageLoading }">
+          <TransitionGroup name="list" tag="div" class="history-list">
           <article v-for="record in pagedRecords" :key="record.id" class="history-row">
             <button class="thumb-button" @click="openPreview(record)">
               <img :src="record.thumbnail_url || record.image_url" :alt="record.prompt" loading="lazy" decoding="async" />
@@ -102,9 +104,11 @@
               <button class="danger" @click="confirmDelete(record)">删除</button>
             </div>
           </article>
+          </TransitionGroup>
         </section>
+        </Transition>
 
-        <nav v-if="totalPages > 1" class="pagination-bar" aria-label="历史分页">
+        <nav v-if="totalPages > 1" v-reveal="120" class="pagination-bar" aria-label="历史分页">
           <button type="button" :disabled="currentPage <= 1 || pageLoading" @click="goToPage(currentPage - 1)">‹</button>
           <button
             v-for="item in paginationItems"
@@ -121,7 +125,9 @@
       </section>
     </main>
 
+    <Transition name="modal-fade">
     <div v-if="previewRecord" class="preview-overlay" @click.self="closePreview">
+      <Transition name="modal-pop" appear>
       <div class="preview-modal">
         <button class="preview-close" @click="closePreview">×</button>
         <div class="preview-image-frame">
@@ -143,9 +149,13 @@
           </div>
         </div>
       </div>
+      </Transition>
     </div>
+    </Transition>
 
+    <Transition name="modal-fade">
     <div v-if="deleteTarget" class="confirm-overlay" @click.self="cancelDelete">
+      <Transition name="modal-pop" appear>
       <div class="confirm-box">
         <h3>确认删除这条记录？</h3>
         <p>删除后不会恢复，生成图片文件也会一并删除。</p>
@@ -156,7 +166,9 @@
           </button>
         </div>
       </div>
+      </Transition>
     </div>
+    </Transition>
   </div>
 </template>
 
@@ -503,6 +515,8 @@ function formatTime(timeStr) {
 .row-actions button,
 .btn-ghost,
 .btn-danger {
+  position: relative;
+  overflow: hidden;
   border: 1px solid var(--color-line);
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.72);
@@ -511,6 +525,31 @@ function formatTime(timeStr) {
   font-family: var(--font-ui);
   font-size: 12px;
   font-weight: 850;
+  transition:
+    border-color var(--transition-base),
+    background var(--transition-base),
+    color var(--transition-base),
+    transform var(--transition-base),
+    box-shadow var(--transition-base);
+}
+
+.filter-head button:hover,
+.export-button:hover,
+.row-actions button:hover,
+.btn-ghost:hover,
+.btn-danger:hover {
+  border-color: var(--color-line-strong);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 22px rgba(23, 23, 23, 0.07);
+  transform: translateY(-1px);
+}
+
+.filter-head button:active,
+.export-button:active,
+.row-actions button:active,
+.btn-ghost:active,
+.btn-danger:active {
+  transform: translateY(0) scale(0.97);
 }
 
 .filter-head button {
@@ -536,6 +575,13 @@ function formatTime(timeStr) {
   background: rgba(255, 255, 255, 0.8);
   color: var(--color-ink);
   outline: none;
+  transition: border-color var(--transition-base), box-shadow var(--transition-base), transform var(--transition-base);
+}
+
+.filter-panel select:focus {
+  border-color: var(--color-blue);
+  box-shadow: 0 0 0 4px rgba(60, 110, 232, 0.08);
+  transform: translateY(-1px);
 }
 
 .export-button {
@@ -585,6 +631,14 @@ function formatTime(timeStr) {
 }
 
 .history-stats div {
+  transition: transform var(--transition-base), color var(--transition-base);
+}
+
+.history-stats:hover div {
+  transform: translateY(-1px);
+}
+
+.history-stats div {
   display: grid;
   gap: 5px;
 }
@@ -629,6 +683,10 @@ function formatTime(timeStr) {
   opacity: 0.58;
 }
 
+.history-list {
+  position: relative;
+}
+
 .history-row {
   min-height: 88px;
   padding: 13px 16px;
@@ -637,6 +695,16 @@ function formatTime(timeStr) {
   gap: 16px;
   align-items: center;
   border-bottom: 1px solid rgba(226, 229, 223, 0.76);
+  transition:
+    background var(--transition-base),
+    transform var(--transition-base),
+    box-shadow var(--transition-base);
+}
+
+.history-row:hover {
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow: inset 3px 0 0 rgba(60, 110, 232, 0.26);
+  transform: translateX(3px);
 }
 
 .history-row:last-child {
@@ -652,6 +720,7 @@ function formatTime(timeStr) {
   border-radius: var(--radius-md);
   background: var(--color-paper-soft);
   cursor: pointer;
+  transition: transform var(--transition-base), box-shadow var(--transition-base), border-color var(--transition-base);
 }
 
 .thumb-button img {
@@ -659,6 +728,21 @@ function formatTime(timeStr) {
   height: 100%;
   object-fit: cover;
   display: block;
+  opacity: 0;
+  transform: scale(1.04);
+  animation: thumb-in 420ms var(--ease-out-soft) forwards;
+  transition: transform 520ms var(--ease-out-soft), filter var(--transition-base);
+}
+
+.thumb-button:hover {
+  border-color: rgba(60, 110, 232, 0.28);
+  box-shadow: 0 12px 24px rgba(23, 23, 23, 0.11);
+  transform: translateY(-2px) rotate(-1deg);
+}
+
+.thumb-button:hover img {
+  transform: scale(1.09);
+  filter: saturate(1.05);
 }
 
 .record-prompt {
@@ -688,6 +772,13 @@ function formatTime(timeStr) {
   font-family: var(--font-ui);
   font-size: 11px;
   font-weight: 850;
+  transition: background var(--transition-base), color var(--transition-base), transform var(--transition-base);
+}
+
+.history-row:hover .record-tags span {
+  background: rgba(60, 110, 232, 0.07);
+  color: var(--color-blue);
+  transform: translateY(-1px);
 }
 
 .cost-cell,
@@ -741,6 +832,7 @@ function formatTime(timeStr) {
   max-width: min(1040px, 94vw);
   max-height: 92vh;
   overflow: hidden;
+  transform-origin: center;
 }
 
 .preview-image-frame {
@@ -755,6 +847,7 @@ function formatTime(timeStr) {
   max-height: 70vh;
   display: block;
   object-fit: contain;
+  animation: preview-image-in 420ms var(--ease-out-soft) both;
 }
 
 .preview-loading {
@@ -769,6 +862,7 @@ function formatTime(timeStr) {
   font-size: 12px;
   font-weight: 850;
   transform: translateX(-50%);
+  animation: loading-pill 1.2s ease-in-out infinite;
 }
 
 .pagination-bar {
@@ -794,6 +888,7 @@ function formatTime(timeStr) {
   font-family: var(--font-ui);
   font-size: 14px;
   font-weight: 850;
+  transition: background var(--transition-base), color var(--transition-base), transform var(--transition-base);
 }
 
 .pagination-bar button:last-child {
@@ -804,6 +899,16 @@ function formatTime(timeStr) {
   background: rgba(28, 180, 151, 0.1);
   color: #087e70;
   box-shadow: inset 0 0 0 1px #14b8a6;
+}
+
+.pagination-bar button:hover:not(:disabled):not(.ellipsis) {
+  background: rgba(60, 110, 232, 0.08);
+  color: var(--color-blue);
+  transform: translateY(-1px);
+}
+
+.pagination-bar button:active:not(:disabled):not(.ellipsis) {
+  transform: translateY(0) scale(0.96);
 }
 
 .pagination-bar button.ellipsis {
@@ -828,11 +933,49 @@ function formatTime(timeStr) {
   cursor: pointer;
   font-size: 22px;
   backdrop-filter: blur(10px);
+  transition: transform var(--transition-base), background var(--transition-base), box-shadow var(--transition-base);
+}
+
+.preview-close:hover {
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 10px 24px rgba(23, 23, 23, 0.15);
+  transform: rotate(8deg) scale(1.04);
 }
 
 .preview-info,
 .confirm-box {
   padding: 20px;
+}
+
+@keyframes thumb-in {
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes preview-image-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes loading-pill {
+  0%, 100% {
+    opacity: 0.72;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  50% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-2px);
+  }
 }
 
 .preview-info p,

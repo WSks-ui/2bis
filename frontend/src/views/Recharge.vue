@@ -1,7 +1,7 @@
 <template>
   <div class="plans-page paper-page">
     <main class="plans-shell">
-      <section class="plans-hero">
+      <section v-reveal class="plans-hero">
         <div>
           <p class="eyebrow">Plans & Quota</p>
           <h1>计划与订阅</h1>
@@ -29,15 +29,15 @@
         </div>
       </section>
 
-      <section class="billing-toggle">
+      <section v-reveal="100" class="billing-toggle">
         <button :class="{ active: period === 'monthly' }" @click="period = 'monthly'">按月</button>
         <button :class="{ active: period === 'yearly' }" @click="period = 'yearly'">
           按年 <span>省约 {{ yearlySaving }}%</span>
         </button>
       </section>
 
-      <section class="plan-grid">
-        <article class="plan-card surface-card trial-card">
+      <TransitionGroup name="list" tag="section" class="plan-grid">
+        <article v-reveal="120" key="trial" class="plan-card surface-card trial-card">
           <div class="plan-head">
             <h2>{{ trialPack.name || '新手体验包' }}</h2>
           </div>
@@ -58,6 +58,7 @@
         <article
           v-for="plan in subscriptionPlans"
           :key="plan.id"
+          v-reveal="160"
           class="plan-card surface-card"
           :class="{ featured: plan.plan_key === 'creator' }"
         >
@@ -80,16 +81,16 @@
             {{ loadingPlanId === plan.id ? '创建中' : `订阅 ${plan.name}` }}
           </button>
         </article>
-      </section>
+      </TransitionGroup>
 
-      <section class="workflow-section surface-card">
+      <section v-reveal="220" class="workflow-section surface-card">
         <div class="workflow-copy">
           <p class="eyebrow">Workflow Billing</p>
           <h2>专业工作流暂不单独支付</h2>
           <p>第一版只走额度扣费。上线测试后再根据真实成本、成功率和用户复用率调整额度。</p>
         </div>
         <div class="workflow-grid">
-          <article v-for="workflow in workflowPresets" :key="workflow.workflow_type" class="workflow-card">
+          <article v-for="workflow in workflowPresets" :key="workflow.workflow_type" v-reveal="260" class="workflow-card">
             <h3>{{ workflow.name }}</h3>
             <p>{{ workflow.description }}</p>
             <div class="workflow-costs">
@@ -103,7 +104,9 @@
     </main>
 
     <Teleport to="body">
+      <Transition name="modal-fade">
       <div v-if="payDialogVisible" class="modal-overlay" @click.self="payDialogVisible = false">
+        <Transition name="modal-pop" appear>
         <div class="modal-card">
           <h3>确认支付</h3>
           <div v-if="currentOrder" class="order-info">
@@ -118,7 +121,9 @@
             </button>
           </div>
         </div>
+        </Transition>
       </div>
+      </Transition>
     </Teleport>
   </div>
 </template>
@@ -315,6 +320,13 @@ async function mockPay() {
   display: grid;
   align-content: start;
   gap: 8px;
+  transition: transform var(--transition-base), box-shadow var(--transition-base), border-color var(--transition-base);
+}
+
+.balance-card:hover {
+  border-color: rgba(60, 110, 232, 0.2);
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
 }
 
 .balance-card span {
@@ -383,12 +395,18 @@ async function mockPay() {
   font-family: var(--font-ui);
   font-size: 13px;
   font-weight: 850;
+  transition: background var(--transition-base), color var(--transition-base), transform var(--transition-base), box-shadow var(--transition-base);
 }
 
 .billing-toggle button.active {
   background: #fff;
   color: var(--color-ink);
   box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
+}
+
+.billing-toggle button:hover {
+  color: var(--color-ink);
 }
 
 .billing-toggle span {
@@ -401,15 +419,36 @@ async function mockPay() {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 18px;
   align-items: stretch;
+  position: relative;
 }
 
 .plan-card {
   position: relative;
+  overflow: hidden;
   min-height: 340px;
   padding: 26px 22px 20px;
   display: grid;
   grid-template-rows: auto auto auto 1fr auto;
   gap: 16px;
+  transform: translateZ(0);
+}
+
+.plan-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.52), transparent 34%);
+  opacity: 0;
+  transition: opacity var(--transition-base);
+}
+
+.plan-card:hover {
+  transform: translateY(-5px) scale(1.01);
+}
+
+.plan-card:hover::after {
+  opacity: 1;
 }
 
 .plan-card.featured {
@@ -430,6 +469,7 @@ async function mockPay() {
   font-size: 12px;
   font-weight: 900;
   transform: translateX(-50%);
+  animation: tag-float 2.8s ease-in-out infinite;
 }
 
 .plan-head h2 {
@@ -466,6 +506,8 @@ async function mockPay() {
 }
 
 .plan-button {
+  position: relative;
+  overflow: hidden;
   min-height: 44px;
   border: 1px solid var(--color-line-strong);
   border-radius: var(--radius-md);
@@ -475,12 +517,23 @@ async function mockPay() {
   font-family: var(--font-ui);
   font-size: 13px;
   font-weight: 850;
+  transition: transform var(--transition-base), box-shadow var(--transition-base), border-color var(--transition-base), background var(--transition-base);
 }
 
 .plan-button.primary {
   border-color: var(--color-ink);
   background: linear-gradient(180deg, #252525, #111);
   color: #fff;
+}
+
+.plan-button:hover:not(:disabled) {
+  border-color: var(--color-ink);
+  box-shadow: 0 12px 26px rgba(23, 23, 23, 0.12);
+  transform: translateY(-1px);
+}
+
+.plan-button:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
 }
 
 .plan-button:disabled {
@@ -512,6 +565,13 @@ async function mockPay() {
   border: 1px solid var(--color-line);
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.62);
+  transition: transform var(--transition-base), border-color var(--transition-base), box-shadow var(--transition-base);
+}
+
+.workflow-card:hover {
+  border-color: rgba(60, 110, 232, 0.24);
+  box-shadow: 0 14px 30px rgba(23, 23, 23, 0.08);
+  transform: translateY(-3px);
 }
 
 .workflow-card h3 {
@@ -540,6 +600,12 @@ async function mockPay() {
   font-family: var(--font-ui);
   font-size: 12px;
   font-weight: 850;
+  transition: transform var(--transition-base), background var(--transition-base);
+}
+
+.workflow-card:hover .workflow-costs span {
+  background: rgba(60, 110, 232, 0.12);
+  transform: translateY(-1px);
 }
 
 .modal-overlay {
@@ -561,6 +627,7 @@ async function mockPay() {
   border-radius: var(--radius-xl);
   background: rgba(255, 255, 255, 0.94);
   box-shadow: var(--shadow-lg);
+  transform-origin: center;
 }
 
 .modal-card h3 {
@@ -599,12 +666,24 @@ async function mockPay() {
   cursor: pointer;
   font-family: var(--font-ui);
   font-weight: 850;
+  transition: transform var(--transition-base), box-shadow var(--transition-base), border-color var(--transition-base);
 }
 
 .btn-ghost {
   border: 1px solid var(--color-line-strong);
   background: transparent;
   color: var(--color-muted);
+}
+
+.btn-ghost:hover,
+.btn-pay:hover:not(:disabled) {
+  box-shadow: 0 10px 22px rgba(23, 23, 23, 0.09);
+  transform: translateY(-1px);
+}
+
+.btn-ghost:active,
+.btn-pay:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
 }
 
 @media (max-width: 1100px) {
@@ -615,6 +694,16 @@ async function mockPay() {
 
   .plan-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@keyframes tag-float {
+  0%, 100% {
+    transform: translateX(-50%) translateY(0);
+  }
+
+  50% {
+    transform: translateX(-50%) translateY(-3px);
   }
 }
 

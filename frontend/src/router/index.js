@@ -1,8 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import api from '../api'
+import { getStoredToken } from '../services/authToken'
 
-const loadLoginView = () => import('../views/Login.vue')
-const loadRegisterView = () => import('../views/Register.vue')
+const loadAuthView = () => import('../views/AuthView.vue')
 const loadHomeView = () => import('../views/Home.vue')
 const loadRechargeView = () => import('../views/Recharge.vue')
 const loadHistoryView = () => import('../views/History.vue')
@@ -12,12 +12,12 @@ const routes = [
   {
     path: '/login',
     name: 'Login',
-    component: loadLoginView
+    component: loadAuthView
   },
   {
     path: '/register',
     name: 'Register',
-    component: loadRegisterView
+    component: loadAuthView
   },
   {
     path: '/',
@@ -55,7 +55,7 @@ const router = createRouter({
 })
 
 router.beforeEach((to, from, next) => {
-  const token = localStorage.getItem('token')
+  const token = getStoredToken()
   if (to.meta.requiresAuth && !token) {
     next('/login')
     return
@@ -89,4 +89,9 @@ export function preloadPlansRoute() {
 
 export function preloadAdminApiKeysRoute() {
   return loadAdminApiKeysView().catch(() => {})
+}
+
+export function preloadAuthRoutes() {
+  // 登录/注册页共享同一个壳层，提前拉取 chunk 可避免首次切换时出现白屏等待。
+  return loadAuthView().catch(() => {})
 }

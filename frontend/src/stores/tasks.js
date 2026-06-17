@@ -17,6 +17,7 @@ export const useTasksStore = defineStore('tasks', () => {
   let lastFetchedAt = 0
 
   function normalizeTask(data, local = {}) {
+    // 后端审计字段原样归一化到任务卡，用于区分上游等待、响应体传输和本地保存耗时。
     return {
       id: data.id,
       mode: data.mode || local.mode || 'text2img',
@@ -40,6 +41,13 @@ export const useTasksStore = defineStore('tasks', () => {
       upstreamResponseFormat: data.upstream_response_format || '',
       upstreamRequestId: data.upstream_request_id || '',
       upstreamElapsedSeconds: data.upstream_elapsed_seconds ?? null,
+      upstreamHeaderSeconds: data.upstream_header_seconds ?? null,
+      upstreamBodySeconds: data.upstream_body_seconds ?? null,
+      upstreamParseSeconds: data.upstream_parse_seconds ?? null,
+      upstreamSaveSeconds: data.upstream_save_seconds ?? null,
+      upstreamBodyBytes: data.upstream_body_bytes ?? null,
+      upstreamContentLength: data.upstream_content_length ?? null,
+      upstreamTransferEncoding: data.upstream_transfer_encoding || '',
       progressStage: data.progress_stage || '',
       progressMessage: data.progress_message || '',
       createdAt: data.created_at || local.createdAt || new Date().toISOString(),
@@ -105,6 +113,13 @@ export const useTasksStore = defineStore('tasks', () => {
       upstreamResponseFormat: '',
       upstreamRequestId: '',
       upstreamElapsedSeconds: null,
+      upstreamHeaderSeconds: null,
+      upstreamBodySeconds: null,
+      upstreamParseSeconds: null,
+      upstreamSaveSeconds: null,
+      upstreamBodyBytes: null,
+      upstreamContentLength: null,
+      upstreamTransferEncoding: '',
       progressStage: '',
       progressMessage: '',
       createdAt: new Date().toISOString(),
