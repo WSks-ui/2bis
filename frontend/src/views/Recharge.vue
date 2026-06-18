@@ -6,6 +6,11 @@
           <p class="eyebrow">Plans & Quota</p>
           <h1>计划与订阅</h1>
           <p>选择适合你的计划，解锁更高质量与专业工作流。专业工作流第一版统一按订阅额度扣费。</p>
+          <div class="hero-points" aria-label="订阅优势">
+            <span>失败自动退款</span>
+            <span>额度实时结算</span>
+            <span>专业工作流可用</span>
+          </div>
         </div>
         <div class="balance-cards">
           <article class="surface-card balance-card">
@@ -29,7 +34,8 @@
         </div>
       </section>
 
-      <section v-reveal="100" class="billing-toggle">
+      <section v-reveal="100" class="billing-toggle" :class="`period-${period}`">
+        <span class="toggle-indicator" aria-hidden="true"></span>
         <button :class="{ active: period === 'monthly' }" @click="period = 'monthly'">按月</button>
         <button :class="{ active: period === 'yearly' }" @click="period = 'yearly'">
           按年 <span>省约 {{ yearlySaving }}%</span>
@@ -40,6 +46,7 @@
         <article v-reveal="120" key="trial" class="plan-card surface-card trial-card">
           <div class="plan-head">
             <h2>{{ trialPack.name || '新手体验包' }}</h2>
+            <small>低门槛验证出图质量</small>
           </div>
           <div class="plan-price">
             ¥{{ trialPack.price || 5 }}<span>/{{ trialPack.duration_days || 7 }} 天</span>
@@ -65,10 +72,12 @@
           <div v-if="plan.plan_key === 'creator'" class="recommend-tag">推荐</div>
           <div class="plan-head">
             <h2>{{ plan.name }}</h2>
+            <small>{{ planHint(plan) }}</small>
           </div>
           <div class="plan-price">
             ¥{{ planPrice(plan) }}<span>/{{ period === 'monthly' ? '月' : '年' }}</span>
           </div>
+          <p v-if="period === 'yearly'" class="price-note">折合 ¥{{ monthlyEquivalent(plan) }}/月</p>
           <p class="quota-line">{{ plan.monthly_quota }} 额度 / 月</p>
           <ul>
             <li>标准生成（低/中/高）</li>
@@ -77,11 +86,22 @@
             <li v-if="plan.plan_key === 'creator'">优先生成通道</li>
             <li v-if="plan.plan_key === 'pro'">更高任务容量</li>
           </ul>
+          <div class="plan-meter" aria-hidden="true">
+            <span :style="{ width: planMeterWidth(plan) }"></span>
+          </div>
           <button class="plan-button" :class="{ primary: plan.plan_key === 'creator' }" :disabled="loadingPlanId === plan.id" @click="buyPlan(plan)">
             {{ loadingPlanId === plan.id ? '创建中' : `订阅 ${plan.name}` }}
           </button>
         </article>
       </TransitionGroup>
+
+      <section v-reveal="190" class="commercial-strip surface-card">
+        <div>
+          <span>商业化账务闭环</span>
+          <strong>体验积分与订阅额度分开结算，避免专业工作流成本失控。</strong>
+        </div>
+        <p>当前版本先按额度扣费，上线后根据真实成本、成功率和复用率继续校准套餐。</p>
+      </section>
 
       <section v-reveal="220" class="workflow-section surface-card">
         <div class="workflow-copy">
@@ -114,6 +134,7 @@
             <div><span>商品</span><strong>{{ currentOrder.product_name }}</strong></div>
             <div><span>金额</span><strong>¥{{ currentOrder.amount }}</strong></div>
           </div>
+          <p class="payment-note">支付完成后会自动刷新账户额度；如果上游任务失败，已扣额度会回退。</p>
           <div class="modal-actions">
             <button class="btn-ghost" @click="payDialogVisible = false">取消</button>
             <button class="btn-black btn-pay" :disabled="paying" @click="mockPay">
@@ -204,6 +225,27 @@ function applyPlansConfig(data) {
 
 function planPrice(plan) {
   return period.value === 'monthly' ? plan.monthly_price : plan.yearly_price
+}
+
+function monthlyEquivalent(plan) {
+  const yearlyPrice = Number(plan.yearly_price || 0)
+  if (!yearlyPrice) return plan.monthly_price || 0
+  return Math.round(yearlyPrice / 12)
+}
+
+function planHint(plan) {
+  const hints = {
+    light: '个人轻量创作',
+    creator: '稳定内容生产',
+    pro: '高频团队与批量任务'
+  }
+  return hints[plan.plan_key] || '按需扩展创作额度'
+}
+
+function planMeterWidth(plan) {
+  const maxQuota = Math.max(...subscriptionPlans.value.map((item) => Number(item.monthly_quota || 0)), 1)
+  const ratio = Math.min(Math.max(Number(plan.monthly_quota || 0) / maxQuota, 0.18), 1)
+  return `${Math.round(ratio * 100)}%`
 }
 
 function concurrencyText(plan) {
@@ -308,6 +350,32 @@ async function mockPay() {
   font-size: 15px;
 }
 
+.hero-points {
+  margin-top: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.hero-points span {
+  padding: 7px 10px;
+  border: 1px solid rgba(60, 110, 232, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.58);
+  color: var(--color-ink);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 850;
+  box-shadow: 0 8px 20px rgba(23, 23, 23, 0.04);
+  transition: transform var(--transition-base), border-color var(--transition-base), background var(--transition-base);
+}
+
+.hero-points span:hover {
+  border-color: rgba(60, 110, 232, 0.22);
+  background: rgba(255, 255, 255, 0.8);
+  transform: translateY(-2px);
+}
+
 .balance-cards {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -396,6 +464,7 @@ async function mockPay() {
 }
 
 .billing-toggle {
+  position: relative;
   width: max-content;
   margin: 28px 0 22px;
   padding: 4px;
@@ -406,7 +475,26 @@ async function mockPay() {
   background: rgba(255, 255, 255, 0.72);
 }
 
+.toggle-indicator {
+  position: absolute;
+  z-index: 0;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc(50% - 6px);
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+  transition: transform 260ms cubic-bezier(0.2, 0.9, 0.24, 1.12);
+}
+
+.billing-toggle.period-yearly .toggle-indicator {
+  transform: translateX(calc(100% + 8px));
+}
+
 .billing-toggle button {
+  position: relative;
+  z-index: 1;
   min-width: 76px;
   min-height: 34px;
   padding: 0 14px;
@@ -422,9 +510,8 @@ async function mockPay() {
 }
 
 .billing-toggle button.active {
-  background: #fff;
+  background: transparent;
   color: var(--color-ink);
-  box-shadow: var(--shadow-sm);
   transform: translateY(-1px);
 }
 
@@ -507,6 +594,15 @@ async function mockPay() {
   font-size: 18px;
 }
 
+.plan-head small {
+  margin-top: 6px;
+  display: block;
+  color: var(--color-muted);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .plan-price {
   color: var(--color-ink);
   font-family: var(--font-heading);
@@ -536,9 +632,38 @@ async function mockPay() {
   font-weight: 750;
 }
 
+.price-note {
+  width: max-content;
+  margin: -8px 0 -4px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(28, 180, 151, 0.1);
+  color: #087e70;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 850;
+}
+
 .plan-card li {
   color: var(--color-muted);
   font-size: 13px;
+}
+
+.plan-meter {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(226, 229, 223, 0.58);
+}
+
+.plan-meter span {
+  width: 24%;
+  height: 100%;
+  display: block;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #111, rgba(60, 110, 232, 0.72), rgba(28, 180, 151, 0.72));
+  transform-origin: left center;
+  animation: meter-in 540ms var(--ease-out-soft) both;
 }
 
 .plan-button {
@@ -575,6 +700,55 @@ async function mockPay() {
 .plan-button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.commercial-strip {
+  position: relative;
+  overflow: hidden;
+  margin-top: 24px;
+  padding: 20px 22px;
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: center;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(246, 244, 238, 0.62)),
+    radial-gradient(circle at 8% 0%, rgba(28, 180, 151, 0.12), transparent 18rem);
+}
+
+.commercial-strip::after {
+  content: '';
+  position: absolute;
+  inset: auto 22px 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(60, 110, 232, 0.22), transparent);
+}
+
+.commercial-strip div {
+  display: grid;
+  gap: 5px;
+}
+
+.commercial-strip span {
+  color: var(--color-blue);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.commercial-strip strong {
+  color: var(--color-ink);
+  font-size: 18px;
+}
+
+.commercial-strip p {
+  max-width: 430px;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.7;
 }
 
 .workflow-section {
@@ -698,6 +872,17 @@ async function mockPay() {
   word-break: break-all;
 }
 
+.payment-note {
+  margin: -8px 0 20px;
+  padding: 12px 14px;
+  border: 1px solid rgba(28, 180, 151, 0.14);
+  border-radius: var(--radius-md);
+  background: rgba(28, 180, 151, 0.07);
+  color: #087e70;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
 .btn-ghost,
 .btn-pay {
   min-height: 42px;
@@ -747,6 +932,16 @@ async function mockPay() {
   }
 }
 
+@keyframes meter-in {
+  from {
+    transform: scaleX(0);
+  }
+
+  to {
+    transform: scaleX(1);
+  }
+}
+
 @media (max-width: 720px) {
   .plans-shell {
     padding: 28px 14px 96px;
@@ -764,6 +959,15 @@ async function mockPay() {
     grid-template-columns: 1fr 1fr;
   }
 
+  .toggle-indicator {
+    width: calc(50% - 6px);
+  }
+
+  .commercial-strip {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
   .plan-card {
     min-height: auto;
   }
@@ -771,6 +975,20 @@ async function mockPay() {
   .modal-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recommend-tag,
+  .plan-meter span {
+    animation: none;
+  }
+
+  .balance-card:hover,
+  .plan-card:hover,
+  .workflow-card:hover,
+  .hero-points span:hover {
+    transform: none;
   }
 }
 </style>
