@@ -19,6 +19,7 @@ const INPUT_SELECTOR = 'input, textarea, select, [contenteditable=""], [contente
 
 const enabled = ref(false)
 const cursorReady = ref(false)
+const cursorIdle = ref(false)
 const hoveringInteractive = ref(false)
 const hoveringInput = ref(false)
 const pressing = ref(false)
@@ -27,13 +28,16 @@ const dotEl = ref(null)
 const target = { x: 0, y: 0 }
 const dot = { x: 0, y: 0 }
 const previousDot = { x: 0, y: 0 }
+const magnetic = { x: 0, y: 0, active: false, strength: 0 }
 let mediaQuery = null
 let rafId = 0
+let idleTimer = 0
 
 const cursorClass = computed(() => ({
   'is-interactive': hoveringInteractive.value,
   'is-input': hoveringInput.value,
-  'is-pressing': pressing.value
+  'is-pressing': pressing.value,
+  'is-idle': cursorIdle.value
 }))
 
 onMounted(() => {
@@ -46,6 +50,7 @@ onMounted(() => {
   window.addEventListener('pointerout', handlePointerOut, { passive: true })
   window.addEventListener('pointerdown', handlePointerDown, { passive: true })
   window.addEventListener('pointerup', handlePointerUp, { passive: true })
+  window.addEventListener('scroll', handleScroll, { passive: true })
   window.addEventListener('blur', handlePointerUp)
 })
 
@@ -56,7 +61,9 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointerout', handlePointerOut)
   window.removeEventListener('pointerdown', handlePointerDown)
   window.removeEventListener('pointerup', handlePointerUp)
+  window.removeEventListener('scroll', handleScroll)
   window.removeEventListener('blur', handlePointerUp)
+  window.clearTimeout(idleTimer)
   cancelAnimationFrame(rafId)
   document.documentElement.classList.remove('has-custom-cursor')
 })
@@ -70,6 +77,8 @@ function updateEnabled() {
     cancelAnimationFrame(rafId)
     rafId = 0
     cursorReady.value = false
+    cursorIdle.value = false
+    magnetic.active = false
   }
 }
 
@@ -77,11 +86,18 @@ function handlePointerMove(event) {
   if (!enabled.value) return
   target.x = event.clientX
   target.y = event.clientY
+  updateHoverState(event.target)
+
   if (!cursorReady.value) {
     dot.x = target.x
     dot.y = target.y
+    previousDot.x = target.x
+    previousDot.y = target.y
     cursorReady.value = true
   }
+
+  updateMagneticTarget(event.target)
+  scheduleIdle()
 }
 
 function handlePointerOver(event) {
@@ -94,18 +110,26 @@ function handlePointerOut(event) {
   if (!event.relatedTarget) {
     hoveringInteractive.value = false
     hoveringInput.value = false
+    magnetic.active = false
+    cursorReady.value = false
+    cursorIdle.value = false
     return
   }
   updateHoverState(event.relatedTarget)
 }
 
-function handlePointerDown(event) {
+function handlePointerDown() {
   if (!enabled.value) return
   pressing.value = true
+  cursorIdle.value = false
 }
 
 function handlePointerUp() {
   pressing.value = false
+}
+
+function handleScroll() {
+  magnetic.active = false
 }
 
 function updateHoverState(targetElement) {
@@ -113,23 +137,67 @@ function updateHoverState(targetElement) {
   hoveringInteractive.value = Boolean(targetElement?.closest?.(INTERACTIVE_SELECTOR))
 }
 
+function updateMagneticTarget(targetElement) {
+  const interactiveElement = targetElement?.closest?.(INTERACTIVE_SELECTOR)
+  const inputElement = targetElement?.closest?.(INPUT_SELECTOR)
+  if (!interactiveElement || inputElement) {
+    magnetic.active = false
+    return
+  }
+
+  const rect = interactiveElement.getBoundingClientRect()
+  if (!rect.width || !rect.height) {
+    magnetic.active = false
+    return
+  }
+
+  const centerX = rect.left + rect.width / 2
+  const centerY = rect.top + rect.height / 2
+  const distance = Math.hypot(target.x - centerX, target.y - centerY)
+  const radius = Math.min(130, Math.max(54, Math.max(rect.width, rect.height) * 0.62))
+  const strength = Math.max(0, 1 - distance / radius)
+
+  magnetic.active = strength > 0
+  magnetic.strength = strength
+  magnetic.x = centerX
+  magnetic.y = centerY
+}
+
+function scheduleIdle() {
+  cursorReady.value = true
+  cursorIdle.value = false
+  window.clearTimeout(idleTimer)
+  idleTimer = window.setTimeout(() => {
+    cursorIdle.value = true
+    magnetic.active = false
+  }, 1800)
+}
+
 function renderCursor() {
   if (!enabled.value) return
 
   previousDot.x = dot.x
   previousDot.y = dot.y
-  dot.x += (target.x - dot.x) * 0.26
-  dot.y += (target.y - dot.y) * 0.26
+  // 轻磁性只影响光标小球，不移动真实鼠标，避免破坏表单和点击可预期性。
+  const magneticPull = magnetic.active ? magnetic.strength * 0.18 : 0
+  const renderTargetX = target.x + (magnetic.x - target.x) * magneticPull
+  const renderTargetY = target.y + (magnetic.y - target.y) * magneticPull
+  const follow = pressing.value ? 0.38 : hoveringInteractive.value ? 0.3 : 0.24
+  dot.x += (renderTargetX - dot.x) * follow
+  dot.y += (renderTargetY - dot.y) * follow
 
   if (dotEl.value) {
     const vx = dot.x - previousDot.x
     const vy = dot.y - previousDot.y
     const speed = Math.min(1, Math.hypot(vx, vy) / 42)
     const angle = Math.atan2(vy, vx) * 180 / Math.PI
-    const stretch = hoveringInput.value ? 1 : 1 + speed * 0.32
-    const squash = hoveringInput.value ? 1 : 1 - speed * 0.12
+    const magnetScale = magnetic.active ? magnetic.strength * 0.18 : 0
+    const pressScale = pressing.value ? -0.12 : 0
+    const stretch = hoveringInput.value ? 1 : 1 + speed * 0.32 + magnetScale + pressScale
+    const squash = hoveringInput.value ? 1 : 1 - speed * 0.12 - magnetScale * 0.18 + pressScale
     dotEl.value.style.transform = `translate3d(${dot.x}px, ${dot.y}px, 0) rotate(${angle}deg) scale(${stretch}, ${squash})`
-    dotEl.value.style.opacity = String(0.68 + speed * 0.18)
+    const opacity = cursorIdle.value ? 0.42 : 0.68 + speed * 0.18
+    dotEl.value.style.opacity = String(opacity)
   }
 
   rafId = requestAnimationFrame(renderCursor)
