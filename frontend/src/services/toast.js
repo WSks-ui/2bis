@@ -8,6 +8,8 @@ const TYPE_CONFIG = {
 const MAX_VISIBLE_TOASTS = 4
 
 let root = null
+let toastSeed = 0
+const activeToasts = new Map()
 
 function ensureRoot() {
   if (root) return root
@@ -33,7 +35,9 @@ function normalizeOptions(messageOrOptions, fallbackDuration) {
 
 function trimOverflowToasts(container) {
   while (container.children.length > MAX_VISIBLE_TOASTS) {
-    container.firstElementChild?.remove()
+    const oldest = container.firstElementChild
+    oldest?.__closeToast?.()
+    if (oldest?.isConnected) oldest.remove()
   }
 }
 
@@ -45,9 +49,26 @@ function show(type, messageOrOptions) {
   if (!message) return { close: () => {} }
 
   const container = ensureRoot()
+  const dedupeKey = `${type}:${message}`
+  const existing = activeToasts.get(dedupeKey)
+
+  // 高频轮询或重复点击会产生相同提示，合并展示能降低噪音。
+  if (existing?.toast?.isConnected) {
+    existing.count += 1
+    existing.countEl.textContent = `×${existing.count}`
+    existing.countEl.hidden = false
+    existing.restartTimer()
+    existing.toast.classList.add('is-bumped')
+    window.setTimeout(() => existing.toast.classList.remove('is-bumped'), 180)
+    return { close: existing.close }
+  }
+
   const toast = document.createElement('div')
+  const toastId = `app-toast-${++toastSeed}`
   toast.className = `app-toast app-toast--${type}`
+  toast.id = toastId
   toast.setAttribute('role', type === 'error' ? 'alert' : 'status')
+  toast.setAttribute('tabindex', '0')
 
   const icon = document.createElement('span')
   icon.className = 'app-toast__icon'
@@ -61,7 +82,22 @@ function show(type, messageOrOptions) {
   label.className = 'app-toast__label'
   label.textContent = config.label
 
-  toast.append(icon, label, text)
+  const count = document.createElement('span')
+  count.className = 'app-toast__count'
+  count.hidden = true
+
+  const closeButton = document.createElement('button')
+  closeButton.className = 'app-toast__close'
+  closeButton.type = 'button'
+  closeButton.setAttribute('aria-label', '关闭提示')
+  closeButton.textContent = '×'
+
+  const progress = document.createElement('span')
+  progress.className = 'app-toast__progress'
+  progress.style.animationDuration = `${Math.max(duration, 1)}ms`
+  progress.setAttribute('aria-hidden', 'true')
+
+  toast.append(icon, label, text, count, closeButton, progress)
   container.appendChild(toast)
   trimOverflowToasts(container)
 
@@ -69,10 +105,47 @@ function show(type, messageOrOptions) {
     toast.classList.add('is-visible')
   })
 
-  let timer = window.setTimeout(close, duration)
+  let timer = 0
+  let remaining = duration
+  let startedAt = 0
+  let closed = false
+
+  function startTimer() {
+    if (closed) return
+    if (!Number.isFinite(remaining) || remaining <= 0) return
+    window.clearTimeout(timer)
+    startedAt = Date.now()
+    timer = window.setTimeout(close, remaining)
+    progress.style.animationPlayState = 'running'
+  }
+
+  function pauseTimer() {
+    if (closed) return
+    window.clearTimeout(timer)
+    if (startedAt) {
+      remaining = Math.max(0, remaining - (Date.now() - startedAt))
+      startedAt = 0
+    }
+    progress.style.animationPlayState = 'paused'
+  }
+
+  function restartTimer() {
+    if (closed) return
+    window.clearTimeout(timer)
+    remaining = duration
+    startedAt = 0
+    progress.style.animation = 'none'
+    void progress.offsetWidth
+    progress.style.animation = ''
+    progress.style.animationDuration = `${Math.max(duration, 1)}ms`
+    startTimer()
+  }
 
   function close() {
+    if (closed) return
+    closed = true
     window.clearTimeout(timer)
+    activeToasts.delete(dedupeKey)
     toast.classList.remove('is-visible')
     window.setTimeout(() => {
       toast.remove()
@@ -83,7 +156,29 @@ function show(type, messageOrOptions) {
     }, 180)
   }
 
-  toast.addEventListener('click', close, { once: true })
+  startTimer()
+
+  const toastState = {
+    toast,
+    count: 1,
+    countEl: count,
+    close,
+    restartTimer
+  }
+  activeToasts.set(dedupeKey, toastState)
+  toast.__closeToast = close
+
+  closeButton.addEventListener('click', (event) => {
+    event.stopPropagation()
+    close()
+  })
+  toast.addEventListener('mouseenter', pauseTimer)
+  toast.addEventListener('mouseleave', startTimer)
+  toast.addEventListener('focusin', pauseTimer)
+  toast.addEventListener('focusout', startTimer)
+  toast.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') close()
+  })
   return { close }
 }
 

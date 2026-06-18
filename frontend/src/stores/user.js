@@ -6,10 +6,11 @@ import router, { preloadAdminApiKeysRoute, preloadHistoryRoute, preloadPlansRout
 import { usePointsStore } from './points'
 import { clearHistoryCache, getDefaultHistoryParams, warmHistoryPage } from '../services/historyCache'
 import { warmPlansConfig } from '../services/plansCache'
+import { clearStoredToken, getStoredToken, persistToken } from '../services/authToken'
 
 export const useUserStore = defineStore('user', () => {
   const username = ref('')
-  const token = ref(localStorage.getItem('token') || '')
+  const token = ref(getStoredToken())
   const isMember = ref(false)
   const memberExpireAt = ref(null)
   const subscriptionPlan = ref(null)
@@ -22,13 +23,13 @@ export const useUserStore = defineStore('user', () => {
 
   const isLoggedIn = computed(() => !!token.value)
 
-  async function login(loginUsername, password) {
+  async function login(loginUsername, password, options = {}) {
     const res = await api.post('/auth/login', {
       username: loginUsername,
       password: password
     })
     token.value = res.data.access_token
-    localStorage.setItem('token', res.data.access_token)
+    persistToken(res.data.access_token, options.remember !== false)
     username.value = loginUsername
     await refreshUserInfoQuietly()
   }
@@ -50,7 +51,7 @@ export const useUserStore = defineStore('user', () => {
     subscriptionPeriod.value = null
     subscriptionExpireAt.value = null
     isAdmin.value = false
-    localStorage.removeItem('token')
+    clearStoredToken()
     clearHistoryCache()
     router.push('/login')
   }

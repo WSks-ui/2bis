@@ -9,7 +9,14 @@
           <component :is="Component" :key="route.name" />
         </KeepAlive>
       </Transition>
-      <component v-else :is="Component" :key="route.name" />
+      <Transition v-else-if="isAuthRoute(route)" name="auth-route" appear>
+        <KeepAlive include="AuthView" :max="1">
+          <component :is="Component" key="auth-shell" />
+        </KeepAlive>
+      </Transition>
+      <Transition v-else name="route-fade" mode="out-in">
+        <component :is="Component" :key="route.name || route.fullPath" />
+      </Transition>
     </router-view>
   </div>
 </template>
@@ -22,6 +29,7 @@ import NavBar from './components/NavBar.vue'
 
 const route = useRoute()
 const showAppNav = computed(() => Boolean(route.meta.requiresAuth))
+const AUTH_ROUTE_NAMES = new Set(['Login', 'Register'])
 
 onMounted(() => {
   document.addEventListener('contextmenu', preventBrowserContextMenu)
@@ -47,6 +55,10 @@ function preventPageDoubleClickSelection(event) {
 function isEditableTarget(target) {
   return Boolean(target?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]'))
 }
+
+function isAuthRoute(targetRoute) {
+  return AUTH_ROUTE_NAMES.has(targetRoute.name)
+}
 </script>
 
 <style scoped>
@@ -54,6 +66,7 @@ function isEditableTarget(target) {
   position: relative;
   min-height: 100vh;
   background: var(--color-paper);
+  overflow-x: hidden;
 }
 
 .noise-overlay {
@@ -67,6 +80,32 @@ function isEditableTarget(target) {
 
 .app-shell.has-app-nav :deep(.paper-page) {
   min-height: calc(100vh - 69px);
+}
+
+.auth-route-enter-active {
+  transition:
+    opacity 360ms var(--ease-out-soft),
+    transform 440ms var(--ease-out-soft),
+    filter 440ms var(--ease-out-soft);
+}
+
+.auth-route-leave-active {
+  transition:
+    opacity 220ms var(--ease-standard),
+    transform 260ms var(--ease-standard),
+    filter 260ms var(--ease-standard);
+}
+
+.auth-route-enter-from {
+  opacity: 0;
+  transform: translate3d(0, 10px, 0) scale(0.992);
+  filter: blur(10px);
+}
+
+.auth-route-leave-to {
+  opacity: 0;
+  transform: translate3d(0, -8px, 0) scale(0.996);
+  filter: blur(6px);
 }
 
 @media (max-width: 760px) {

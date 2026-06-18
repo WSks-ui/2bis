@@ -1,6 +1,14 @@
 <template>
-  <div class="auth-page">
-    <section class="auth-showcase" aria-label="2Bis AI Image Studio">
+  <div class="auth-page auth-page-login">
+    <section
+      v-if="showShowcase"
+      ref="showcaseRef"
+      class="auth-showcase"
+      aria-label="2Bis AI Image Studio"
+      @mouseenter="handleShowcaseEnter"
+      @mousemove="handleShowcaseMove"
+      @mouseleave="handleShowcaseLeave"
+    >
       <div class="showcase-art">
         <img
           class="showcase-image"
@@ -28,10 +36,10 @@
         <div class="art-grain"></div>
       </div>
 
-      <router-link to="/" class="showcase-logo">2Bis</router-link>
+      <router-link to="/" class="showcase-logo" data-cursor="interactive">2Bis</router-link>
       <div class="showcase-copy">
         <span class="eyebrow">AI Image Studio</span>
-        <h1>把想象变成可交付的视觉作品。</h1>
+        <h1>想象，成为作品。</h1>
         <p>从提示词到高清成片，2Bis 为创作者保留完整历史、额度与专业工作流。</p>
       </div>
     </section>
@@ -50,13 +58,13 @@
           <p>继续生成、管理和复用你的 AI 图像资产。</p>
         </div>
 
-        <nav class="auth-tabs" aria-label="登录与注册切换">
+        <nav class="auth-tabs auth-tabs-login" aria-label="登录与注册切换">
           <span class="active">登录</span>
-          <router-link to="/register">注册</router-link>
+          <router-link to="/register" data-cursor="interactive">注册</router-link>
         </nav>
 
         <form class="auth-form" @submit.prevent="handleLogin">
-          <label>
+          <label class="field-line">
             邮箱 / 用户名
             <input
               v-model="form.username"
@@ -67,7 +75,7 @@
             <span v-if="errors.username" class="input-error">{{ errors.username }}</span>
           </label>
 
-          <label>
+          <label class="field-line">
             密码
             <input
               v-model="form.password"
@@ -85,17 +93,17 @@
               <span class="check-mark" aria-hidden="true"></span>
               <span>本机保持登录</span>
             </label>
-            <button class="text-button" type="button" @click="showUnavailable('密码找回')">忘记密码？</button>
+            <button class="text-button" type="button" data-cursor="interactive" @click="showUnavailable('密码找回')">忘记密码？</button>
           </div>
 
-          <button type="submit" class="btn-black btn-auth" :disabled="loading">
+          <button type="submit" class="btn-black btn-auth auth-primary-action" :disabled="loading" data-cursor="interactive">
             {{ loading ? '登录中…' : '登录' }}
           </button>
         </form>
 
         <div class="auth-divider">或继续使用</div>
         <div class="social-row" aria-label="第三方登录">
-          <button type="button" @click="showUnavailable('Google 登录')" aria-label="Google 登录">
+          <button type="button" data-cursor="interactive" @click="showUnavailable('Google 登录')" aria-label="Google 登录">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
               <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
@@ -104,13 +112,13 @@
             </svg>
             <span>Google</span>
           </button>
-          <button type="button" @click="showUnavailable('Apple 登录')" aria-label="Apple 登录">
+          <button type="button" data-cursor="interactive" @click="showUnavailable('Apple 登录')" aria-label="Apple 登录">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path fill="currentColor" d="M17.28 12.36c-.02-2.18 1.78-3.24 1.86-3.29-1.02-1.48-2.59-1.68-3.14-1.7-1.32-.14-2.6.79-3.27.79-.68 0-1.7-.77-2.81-.75-1.43.02-2.77.85-3.51 2.15-1.52 2.63-.39 6.5 1.07 8.63.73 1.04 1.58 2.2 2.69 2.16 1.09-.04 1.5-.69 2.81-.69 1.3 0 1.68.69 2.82.67 1.17-.02 1.91-1.04 2.61-2.09.84-1.19 1.18-2.36 1.19-2.42-.03-.01-2.3-.88-2.32-3.46zM15.14 5.97c.59-.74.99-1.74.88-2.76-.85.04-1.91.59-2.53 1.31-.55.64-1.04 1.69-.91 2.67.96.07 1.95-.48 2.56-1.22z" />
             </svg>
             <span>Apple</span>
           </button>
-          <button type="button" @click="showUnavailable('SSO 登录')" aria-label="SSO 登录">
+          <button type="button" data-cursor="interactive" @click="showUnavailable('SSO 登录')" aria-label="SSO 登录">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path fill="currentColor" d="M12 3.5a8.5 8.5 0 0 0-8.5 8.5h3a5.5 5.5 0 1 1 2.75 4.76l-1.5 2.6A8.5 8.5 0 1 0 12 3.5z" />
               <path fill="currentColor" d="M3 13.25h8.1L8.3 16.05l1.95 1.95L16.4 12l-6.15-6-1.95 1.95 2.8 2.8H3v2.5z" />
@@ -127,8 +135,18 @@
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthGridInteraction } from '../composables/useAuthGridInteraction'
+import { useShowcaseParallax } from '../composables/useShowcaseParallax'
 import { ElMessage } from '../services/toast'
 import { useUserStore } from '../stores/user'
+
+defineOptions({ name: 'Login' })
+
+defineProps({
+  showShowcase: {
+    type: Boolean,
+    default: true
+  }
+})
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -136,6 +154,7 @@ const userStore = useUserStore()
 const loading = ref(false)
 const rememberMe = ref(true)
 const { authPanelRef, handleGridEnter, handleGridMove, handleGridLeave } = useAuthGridInteraction()
+const { showcaseRef, handleShowcaseEnter, handleShowcaseMove, handleShowcaseLeave } = useShowcaseParallax()
 
 const form = reactive({
   username: '',
@@ -198,11 +217,28 @@ function showUnavailable(name) {
   grid-template-columns: minmax(420px, 58vw) minmax(380px, 1fr);
   background: #f8f7f2;
   overflow: hidden;
+  animation: auth-page-settle 220ms var(--transition-slow) backwards;
 }
 
 .auth-showcase {
   position: relative;
   min-height: 100vh;
+  --showcase-bg-x: 0px;
+  --showcase-bg-y: 0px;
+  --showcase-poster-x: 0px;
+  --showcase-poster-y: 0px;
+  --showcase-poster-rotate: 2.5deg;
+  --showcase-frame-primary-x: 0px;
+  --showcase-frame-primary-y: 0px;
+  --showcase-frame-secondary-x: 0px;
+  --showcase-frame-secondary-y: 0px;
+  --showcase-copy-x: 0px;
+  --showcase-copy-y: 0px;
+  --showcase-logo-x: 0px;
+  --showcase-logo-y: 0px;
+  --showcase-glow-x: 50%;
+  --showcase-glow-y: 48%;
+  --showcase-energy: 0;
   padding: clamp(28px, 4vw, 56px);
   display: flex;
   flex-direction: column;
@@ -213,6 +249,7 @@ function showUnavailable(name) {
   background:
     linear-gradient(135deg, rgba(4, 7, 14, 0.94), rgba(18, 31, 48, 0.86)),
     url('/auth/aria-showcase-blur.webp') center / cover no-repeat;
+  animation: auth-showcase-in 260ms var(--transition-slow) backwards;
 }
 
 .auth-showcase::after {
@@ -222,10 +259,41 @@ function showUnavailable(name) {
   z-index: 1;
   pointer-events: none;
   background:
+    radial-gradient(
+      circle at var(--showcase-glow-x) var(--showcase-glow-y),
+      rgba(118, 182, 255, calc(0.08 + var(--showcase-energy) * 0.1)),
+      transparent 18rem
+    ),
     linear-gradient(90deg, rgba(255, 255, 255, 0.1) 1px, transparent 1px),
     linear-gradient(180deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
-  background-size: 56px 56px;
+  background-size: auto, 56px 56px, 56px 56px;
   mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.68), transparent 86%);
+  transition: opacity 220ms var(--transition-base);
+}
+
+.auth-showcase.is-showcase-active::after {
+  opacity: 0.92;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .auth-showcase:hover {
+    --showcase-bg-x: -8px;
+    --showcase-bg-y: -6px;
+    --showcase-poster-x: 10px;
+    --showcase-poster-y: -8px;
+    --showcase-poster-rotate: 3.2deg;
+    --showcase-frame-primary-x: -7px;
+    --showcase-frame-primary-y: 5px;
+    --showcase-frame-secondary-x: 6px;
+    --showcase-frame-secondary-y: -4px;
+    --showcase-copy-x: 4px;
+    --showcase-copy-y: -3px;
+    --showcase-logo-x: 3px;
+    --showcase-logo-y: -2px;
+    --showcase-glow-x: 58%;
+    --showcase-glow-y: 42%;
+    --showcase-energy: 0.42;
+  }
 }
 
 .showcase-art {
@@ -255,7 +323,12 @@ function showUnavailable(name) {
   inset: 0;
   z-index: 3;
   background:
-    linear-gradient(90deg, transparent calc(100% - clamp(55px, 4.5vw, 75px)), rgba(255, 253, 250, 0.34) calc(100% - clamp(37px, 3vw, 52px)), #fffdfa 100%),
+    linear-gradient(
+      90deg,
+      transparent calc(100% - clamp(58px, 5vw, 86px)),
+      rgba(255, 253, 250, 0.42) calc(100% - clamp(38px, 3.4vw, 58px)),
+      #fffdfa 100%
+    ),
     radial-gradient(circle at 50% 51%, transparent 0 28%, rgba(0, 0, 0, 0.18) 55%, rgba(0, 0, 0, 0.72) 100%),
     linear-gradient(115deg, rgba(255, 255, 255, 0.08), transparent 28%);
   pointer-events: none;
@@ -270,8 +343,10 @@ function showUnavailable(name) {
   object-fit: cover;
   object-position: center 52%;
   filter: saturate(1.08) contrast(1.04);
-  transform: scale(1.035);
-  will-change: transform;
+  transform:
+    scale(1.055)
+    translate3d(var(--showcase-bg-x), var(--showcase-bg-y), 0);
+  will-change: transform, filter;
   animation: showcase-drift 18s var(--ease-out-soft) infinite;
 }
 
@@ -287,8 +362,21 @@ function showUnavailable(name) {
     0 34px 90px rgba(0, 0, 0, 0.48),
     0 0 0 8px rgba(255, 255, 255, 0.06);
   object-fit: cover;
-  transform: rotate(2.5deg);
+  transform:
+    translate3d(var(--showcase-poster-x), var(--showcase-poster-y), 0)
+    rotate(var(--showcase-poster-rotate));
+  transition:
+    box-shadow 220ms var(--transition-base),
+    filter 220ms var(--transition-base);
+  will-change: transform;
   animation: poster-float 9s ease-in-out infinite;
+}
+
+.auth-showcase.is-showcase-active .showcase-poster {
+  box-shadow:
+    0 40px 110px rgba(0, 0, 0, 0.52),
+    0 0 0 8px rgba(255, 255, 255, 0.08);
+  filter: saturate(1.06) contrast(1.04);
 }
 
 .art-frame {
@@ -307,11 +395,15 @@ function showUnavailable(name) {
 .frame-primary {
   right: clamp(34px, 5.8vw, 90px);
   bottom: 13%;
+  transform: translate3d(var(--showcase-frame-primary-x), var(--showcase-frame-primary-y), 0);
+  will-change: transform;
 }
 
 .frame-secondary {
   left: clamp(34px, 6vw, 92px);
   top: 25%;
+  transform: translate3d(var(--showcase-frame-secondary-x), var(--showcase-frame-secondary-y), 0);
+  will-change: transform;
 }
 
 .frame-label {
@@ -333,7 +425,7 @@ function showUnavailable(name) {
 .art-grain {
   position: absolute;
   inset: 0;
-  opacity: 0.17;
+  opacity: calc(0.14 + var(--showcase-energy) * 0.06);
   background-image:
     radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.9) 0 1px, transparent 1px),
     radial-gradient(circle at 72% 62%, rgba(255, 255, 255, 0.7) 0 1px, transparent 1px);
@@ -353,6 +445,9 @@ function showUnavailable(name) {
   line-height: 0.9;
   letter-spacing: -0.1em;
   text-shadow: 0 16px 42px rgba(0, 0, 0, 0.36);
+  transform: translate3d(var(--showcase-logo-x), var(--showcase-logo-y), 0);
+  transition: color var(--transition-base), text-shadow var(--transition-base);
+  will-change: transform;
 }
 
 .showcase-logo:hover {
@@ -364,6 +459,8 @@ function showUnavailable(name) {
   z-index: 6;
   max-width: 560px;
   padding-bottom: clamp(12px, 4vw, 48px);
+  transform: translate3d(var(--showcase-copy-x), var(--showcase-copy-y), 0);
+  will-change: transform;
 }
 
 .eyebrow {
@@ -378,9 +475,10 @@ function showUnavailable(name) {
 .showcase-copy h1 {
   margin: 14px 0 18px;
   color: #fff;
-  font-size: clamp(42px, 6vw, 78px);
+  font-size: clamp(42px, 5vw, 68px);
   line-height: 0.95;
-  letter-spacing: -0.07em;
+  letter-spacing: -0.08em;
+  white-space: nowrap;
 }
 
 .showcase-copy p {
@@ -411,11 +509,14 @@ function showUnavailable(name) {
   padding: clamp(24px, 5vw, 72px);
   display: grid;
   place-items: center;
-  overflow: hidden;
-  isolation: isolate;
   background:
-    radial-gradient(circle at 82% 14%, rgba(60, 110, 232, 0.1), transparent 18rem),
-    linear-gradient(180deg, #fffdfa, #f6f4ef);
+    radial-gradient(circle at var(--grid-target-x) var(--grid-target-y), rgb(var(--auth-accent-rgb) / 0.13), transparent 16rem),
+    radial-gradient(circle at 82% 14%, rgb(var(--auth-accent-rgb) / 0.11), transparent 18rem),
+    radial-gradient(circle at 14% 88%, rgb(var(--auth-warm-rgb) / 0.1), transparent 18rem),
+    linear-gradient(180deg, var(--auth-panel-bg-start), var(--auth-panel-bg-mid) 48%, var(--auth-panel-bg-end));
+  isolation: isolate;
+  overflow: hidden;
+  transition: background 420ms var(--transition-slow);
 }
 
 .auth-panel::before,
@@ -423,78 +524,72 @@ function showUnavailable(name) {
   content: '';
   position: absolute;
   inset: 0;
-  z-index: 0;
   pointer-events: none;
 }
 
 .auth-panel::before {
-  /* 右侧背景网格保持低对比度，避免抢走登录表单的视觉层级。 */
+  z-index: -2;
   opacity: 0.62;
-  background-image:
-    linear-gradient(90deg, rgba(32, 42, 57, 0.058) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(32, 42, 57, 0.05) 1px, transparent 1px);
+  background:
+    linear-gradient(90deg, var(--auth-panel-line) 1px, transparent 1px),
+    linear-gradient(180deg, var(--auth-panel-line) 1px, transparent 1px);
   background-size: var(--grid-size) var(--grid-size);
-  background-position: center;
-  mask-image: radial-gradient(ellipse at 58% 46%, #000 0 58%, rgba(0, 0, 0, 0.5) 76%, transparent 100%);
-}
-
-.auth-panel::after {
-  opacity: 0;
-  background-image:
-    radial-gradient(ellipse at var(--grid-target-x) var(--grid-target-y), rgba(60, 110, 232, 0.14), transparent 9rem),
-    radial-gradient(ellipse at var(--grid-tail-x) var(--grid-tail-y), rgba(60, 110, 232, 0.11), transparent 7rem),
-    linear-gradient(90deg, rgba(60, 110, 232, 0.2) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(60, 110, 232, 0.16) 1px, transparent 1px);
-  background-size:
-    100% 100%,
-    100% 100%,
-    var(--grid-size) var(--grid-size),
-    var(--grid-size) var(--grid-size);
   background-position:
-    0 0,
-    0 0,
     calc(50% + var(--grid-warp-x)) calc(50% + var(--grid-warp-y)),
     calc(50% - var(--grid-warp-y)) calc(50% + var(--grid-warp-x));
   mask-image:
     radial-gradient(
       ellipse at var(--grid-x) var(--grid-y),
-      #000 0 44px,
-      rgba(0, 0, 0, 0.94) 78px,
-      rgba(0, 0, 0, 0.38) calc(var(--grid-softness) - 34px),
+      rgba(0, 0, 0, 1) 0,
+      rgba(0, 0, 0, 0.42) calc(var(--grid-softness) - 34px),
       transparent var(--grid-softness)
     ),
     radial-gradient(
       ellipse at var(--grid-tail-x) var(--grid-tail-y),
-      rgba(0, 0, 0, 0.72) 0 32px,
-      rgba(0, 0, 0, 0.28) 86px,
+      rgba(0, 0, 0, 0.64) 0,
       transparent calc(var(--grid-softness) - 12px)
     );
   mask-composite: add;
-  mix-blend-mode: multiply;
   transform-origin: var(--grid-x) var(--grid-y);
   transform:
     translate3d(var(--grid-warp-x), var(--grid-warp-y), 0)
     rotate(var(--grid-tilt))
     scale(var(--grid-stretch-x), var(--grid-stretch-y));
-  transition:
-    opacity 220ms ease;
-  will-change: opacity, transform, mask-image, background-position;
+  transition: opacity 180ms var(--transition-base);
+  will-change: transform, opacity, background-position;
+}
+
+.auth-panel::after {
+  z-index: -1;
+  opacity: 0;
+  background:
+    radial-gradient(ellipse at var(--grid-target-x) var(--grid-target-y), rgb(var(--auth-accent-rgb) / 0.15), transparent 9rem),
+    radial-gradient(ellipse at var(--grid-tail-x) var(--grid-tail-y), rgb(var(--auth-accent-rgb) / 0.12), transparent 7rem);
+  transition: opacity 180ms var(--transition-base);
+}
+
+.auth-panel.is-grid-active::before {
+  opacity: 0.88;
 }
 
 .auth-panel.is-grid-active::after {
-  opacity: 0.76;
+  opacity: 1;
 }
 
 .auth-card {
-  width: min(100%, 440px);
   position: relative;
-  z-index: 1;
+  width: min(100%, 440px);
   padding: clamp(30px, 4vw, 44px);
   border: 1px solid rgba(226, 229, 223, 0.86);
   border-radius: 32px;
-  background: rgba(255, 255, 255, 0.84);
-  box-shadow: 0 24px 70px rgba(28, 28, 28, 0.1);
+  background:
+    linear-gradient(180deg, var(--auth-card-bg), rgba(255, 255, 255, 0.72)),
+    radial-gradient(circle at 18% 0%, rgb(var(--auth-accent-rgb) / 0.08), transparent 16rem);
+  box-shadow:
+    0 24px 70px rgba(28, 28, 28, 0.1),
+    0 0 0 1px var(--auth-panel-shadow);
   backdrop-filter: blur(18px);
+  animation: auth-card-in 260ms 50ms var(--transition-slow) backwards;
 }
 
 .auth-heading {
@@ -502,7 +597,7 @@ function showUnavailable(name) {
 }
 
 .auth-heading .eyebrow {
-  color: var(--color-blue);
+  color: rgb(var(--auth-accent-rgb));
 }
 
 .auth-heading h2 {
@@ -524,7 +619,7 @@ function showUnavailable(name) {
   grid-template-columns: repeat(2, 1fr);
   border: 1px solid var(--color-line);
   border-radius: 999px;
-  background: #f3f4ef;
+  background: var(--auth-control-bg-strong);
   font-family: var(--font-ui);
   font-size: 14px;
   font-weight: 900;
@@ -551,8 +646,8 @@ function showUnavailable(name) {
 
 .auth-tabs .active {
   color: var(--color-ink);
-  background: #fff;
-  box-shadow: 0 8px 20px rgba(23, 23, 23, 0.08);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 8px 20px var(--auth-panel-shadow);
 }
 
 .auth-form {
@@ -575,7 +670,7 @@ function showUnavailable(name) {
   padding: 0 16px;
   border: 1px solid transparent;
   border-radius: 16px;
-  background: #f4f5f1;
+  background: var(--auth-control-bg);
   color: var(--color-ink);
   outline: none;
   box-shadow: inset 0 0 0 1px rgba(210, 214, 206, 0.9);
@@ -591,12 +686,12 @@ function showUnavailable(name) {
 }
 
 .auth-input:focus {
-  border-color: rgba(60, 110, 232, 0.5);
+  border-color: rgb(var(--auth-accent-rgb) / 0.5);
   background: #fff;
   box-shadow:
-    inset 0 0 0 1px rgba(60, 110, 232, 0.24),
-    0 0 0 5px rgba(60, 110, 232, 0.1),
-    0 14px 34px rgba(60, 110, 232, 0.08);
+    inset 0 0 0 1px rgb(var(--auth-accent-rgb) / 0.24),
+    0 0 0 5px rgb(var(--auth-accent-rgb) / 0.1),
+    0 14px 34px rgb(var(--auth-accent-rgb) / 0.08);
   transform: translateY(-1px);
 }
 
@@ -664,9 +759,9 @@ function showUnavailable(name) {
 }
 
 .remember-check input:checked + .check-mark {
-  border-color: var(--color-blue);
-  background: var(--color-blue);
-  box-shadow: 0 8px 16px rgba(60, 110, 232, 0.22);
+  border-color: rgb(var(--auth-accent-rgb));
+  background: rgb(var(--auth-accent-rgb));
+  box-shadow: 0 8px 16px rgb(var(--auth-accent-rgb) / 0.22);
 }
 
 .remember-check input:checked + .check-mark::after {
@@ -693,7 +788,7 @@ function showUnavailable(name) {
 }
 
 .text-button:hover {
-  color: var(--color-blue);
+  color: rgb(var(--auth-accent-rgb));
   transform: translateY(-1px);
 }
 
@@ -759,7 +854,7 @@ function showUnavailable(name) {
 }
 
 .social-row button:hover {
-  border-color: rgba(60, 110, 232, 0.24);
+  border-color: rgb(var(--auth-accent-rgb) / 0.24);
   background: #fff;
   box-shadow: 0 14px 28px rgba(23, 23, 23, 0.08);
   transform: translateY(-2px);
@@ -771,21 +866,63 @@ function showUnavailable(name) {
 
 @keyframes showcase-drift {
   0%, 100% {
-    transform: scale(1.035) translate3d(0, 0, 0);
+    transform:
+      scale(1.055)
+      translate3d(var(--showcase-bg-x), var(--showcase-bg-y), 0);
   }
 
   50% {
-    transform: scale(1.075) translate3d(-1.2%, -1%, 0);
+    transform:
+      scale(1.085)
+      translate3d(calc(var(--showcase-bg-x) - 1.2%), calc(var(--showcase-bg-y) - 1%), 0);
   }
 }
 
 @keyframes poster-float {
   0%, 100% {
-    transform: rotate(2.5deg) translate3d(0, 0, 0);
+    transform:
+      translate3d(var(--showcase-poster-x), var(--showcase-poster-y), 0)
+      rotate(var(--showcase-poster-rotate));
   }
 
   50% {
-    transform: rotate(1deg) translate3d(0, -12px, 0);
+    transform:
+      translate3d(var(--showcase-poster-x), calc(var(--showcase-poster-y) - 12px), 0)
+      rotate(calc(var(--showcase-poster-rotate) - 1.5deg));
+  }
+}
+
+@keyframes auth-page-settle {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes auth-showcase-in {
+  from {
+    filter: saturate(0.8) brightness(0.9);
+  }
+
+  to {
+    filter: saturate(1) brightness(1);
+  }
+}
+
+@keyframes auth-card-in {
+  from {
+    opacity: 0;
+    transform: translate3d(16px, 0, 0) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
   }
 }
 
@@ -802,13 +939,6 @@ function showUnavailable(name) {
     object-position: center 58%;
   }
 
-  .showcase-art::after {
-    background:
-      linear-gradient(180deg, transparent calc(100% - 75px), rgba(255, 253, 250, 0.38) calc(100% - 45px), #fffdfa 100%),
-      radial-gradient(circle at 50% 51%, transparent 0 28%, rgba(0, 0, 0, 0.18) 55%, rgba(0, 0, 0, 0.72) 100%),
-      linear-gradient(115deg, rgba(255, 255, 255, 0.08), transparent 28%);
-  }
-
   .showcase-poster,
   .art-frame {
     display: none;
@@ -816,12 +946,10 @@ function showUnavailable(name) {
 
   .auth-panel {
     min-height: auto;
-    padding: clamp(24px, 5vw, 72px);
-    place-items: center;
   }
 
-  .auth-panel::after {
-    display: none;
+  .auth-page-register .auth-panel {
+    grid-column: 1;
   }
 
   .showcase-copy {
@@ -842,6 +970,7 @@ function showUnavailable(name) {
 
   .showcase-copy h1 {
     font-size: 38px;
+    white-space: normal;
   }
 
   .auth-panel {
@@ -863,9 +992,15 @@ function showUnavailable(name) {
   }
 }
 
-@media (hover: none), (pointer: coarse) {
-  .auth-panel::after {
-    display: none;
+@media (prefers-reduced-motion: reduce) {
+  .showcase-image,
+  .showcase-poster,
+  .frame-primary,
+  .frame-secondary,
+  .showcase-logo,
+  .showcase-copy {
+    transform: none;
+    animation: none;
   }
 }
 </style>

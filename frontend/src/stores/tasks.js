@@ -17,6 +17,7 @@ export const useTasksStore = defineStore('tasks', () => {
   let lastFetchedAt = 0
 
   function normalizeTask(data, local = {}) {
+    // 后端审计字段原样归一化到任务卡，用于区分上游等待、响应体传输和本地保存耗时。
     return {
       id: data.id,
       mode: data.mode || local.mode || 'text2img',

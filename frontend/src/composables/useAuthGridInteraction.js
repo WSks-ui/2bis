@@ -57,7 +57,7 @@ export function useAuthGridInteraction() {
     const delta = lastTime ? Math.min(32, time - lastTime) / 16.67 : 1
     lastTime = time
 
-    // 使用弹簧积分让视觉中心追随目标点，避免圆形区域跟鼠标“直来直去”。
+    // 使用弹簧积分让视觉中心追随目标点，避免网格高光区域跟鼠标直来直去。
     pointer.velocityX = (pointer.velocityX + (pointer.targetX - pointer.currentX) * SPRING * delta) * FRICTION
     pointer.velocityY = (pointer.velocityY + (pointer.targetY - pointer.currentY) * SPRING * delta) * FRICTION
     pointer.currentX += pointer.velocityX * delta

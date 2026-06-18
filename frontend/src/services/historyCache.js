@@ -35,6 +35,7 @@ export async function fetchHistoryPage(params = {}, options = {}) {
   }
 
   if (!options.force && pendingRequests.has(cacheKey)) {
+    // 相同分页条件复用同一个请求，避免快速切页时重复打后端。
     return pendingRequests.get(cacheKey)
   }
 
@@ -44,6 +45,7 @@ export async function fetchHistoryPage(params = {}, options = {}) {
     .then((res) => {
       const page = normalizeHistoryPayload(res.data, normalizedParams)
       if (requestEpoch === cacheEpoch) {
+        // 清空缓存后旧请求可能才返回，epoch 可防止旧数据重新写回页面。
         writeHistoryPage(cacheKey, page)
         preloadThumbnails(page.records)
       }
@@ -118,6 +120,7 @@ function normalizeHistoryPayload(data, params) {
 
 function writeHistoryPage(cacheKey, page) {
   if (pageCache.has(cacheKey)) pageCache.delete(cacheKey)
+  // 映射表按插入顺序维护最近使用页面，方便后续按最旧分页淘汰。
   pageCache.set(cacheKey, {
     data: clonePage(page),
     updatedAt: Date.now()

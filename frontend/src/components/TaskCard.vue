@@ -1,7 +1,16 @@
 <template>
-  <article :class="['task-card', `task-card--${task.status}`]">
+  <article :class="['task-card', `task-card--${task.status}`]" :aria-label="cardAriaLabel">
+    <div class="task-status-badge">
+      <span class="status-dot" aria-hidden="true"></span>
+      <span>{{ statusLabel }}</span>
+    </div>
+
     <div v-if="task.status === 'done' && task.imageUrl" class="task-image-wrap">
       <img :src="task.imageUrl" :alt="task.prompt" class="task-image" loading="lazy" decoding="async" />
+      <div class="task-image-caption">
+        <span>{{ modeLabel }}</span>
+        <strong>{{ compactPrompt }}</strong>
+      </div>
       <div class="task-image-actions">
         <button class="task-action-btn" @click.stop="downloadImage" title="下载">↓</button>
         <button class="task-action-btn" @click.stop="$emit('remove', task.id)" title="删除">×</button>
@@ -21,7 +30,7 @@
       </div>
       <div class="task-state">
         <span class="status-dot"></span>
-        <strong>{{ statusLabel }}</strong>
+        <strong>{{ pendingHeadline }}</strong>
       </div>
       <div v-if="task.progressMessage || timeLabel || task.pollError" class="task-progress-meta">
         <span v-if="task.progressMessage">{{ task.progressMessage }}</span>
@@ -99,15 +108,28 @@ const statusLabel = computed(() => {
   const map = {
     queued: '排队中',
     generating: '生成中',
+    done: '已完成',
     failed: '已退款'
   }
   return map[props.task.status] || props.task.status
+})
+
+const pendingHeadline = computed(() => {
+  if (props.task.status === 'failed') return '生成失败，额度已回退'
+  return statusLabel.value
 })
 
 const taskDisplayText = computed(() => {
   if (props.task.error) return props.task.error
   return props.task.prompt
 })
+
+const compactPrompt = computed(() => {
+  const text = taskDisplayText.value || '未命名作品'
+  return text.length > 34 ? `${text.slice(0, 34)}…` : text
+})
+
+const cardAriaLabel = computed(() => `${statusLabel.value}，${compactPrompt.value}`)
 
 const sourceLabel = computed(() => {
   const map = { free_points: '体验积分', quota: '订阅额度', points: '普通积分' }
@@ -212,19 +234,76 @@ function downloadImage() {
 
 <style scoped>
 .task-card {
+  position: relative;
   overflow: hidden;
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-line);
-  background: rgba(255, 255, 255, 0.74);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(250, 250, 246, 0.72)),
+    rgba(255, 255, 255, 0.74);
   box-shadow: var(--shadow-sm);
   content-visibility: auto;
   contain-intrinsic-size: 360px 460px;
-  transition: transform var(--transition-base), box-shadow var(--transition-base);
+  transform: translateZ(0);
+  isolation: isolate;
+  transition:
+    border-color var(--transition-base),
+    transform var(--transition-base),
+    box-shadow var(--transition-base),
+    filter var(--transition-base);
 }
 
 .task-card:hover {
-  transform: translateY(-2px);
+  border-color: rgba(60, 110, 232, 0.22);
+  transform: translateY(-4px) scale(1.01);
   box-shadow: var(--shadow-md);
+}
+
+.task-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(130deg, rgba(255, 255, 255, 0.34), transparent 32%);
+  opacity: 0;
+  transition: opacity var(--transition-base);
+}
+
+.task-card:hover::after {
+  opacity: 1;
+}
+
+.task-status-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 3;
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  border: 1px solid rgba(255, 255, 255, 0.52);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 12px 28px rgba(23, 23, 23, 0.1);
+  color: var(--color-green);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 900;
+  backdrop-filter: blur(14px);
+  opacity: 0;
+  transform: translate3d(0, -8px, 0);
+  transition: opacity var(--transition-base), transform var(--transition-base);
+}
+
+.task-card:hover .task-status-badge,
+.task-card--queued .task-status-badge,
+.task-card--generating .task-status-badge,
+.task-card--failed .task-status-badge {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
 }
 
 .task-image-wrap,
@@ -241,14 +320,81 @@ function downloadImage() {
   height: 100%;
   object-fit: cover;
   display: block;
+  opacity: 0;
+  transform: scale(1.02);
+  animation: task-image-in 520ms var(--ease-out-soft) forwards;
+  transition: transform 520ms var(--ease-out-soft), filter var(--transition-base);
+}
+
+.task-card:hover .task-image {
+  transform: scale(1.055);
+  filter: saturate(1.04) contrast(1.02);
 }
 
 .task-image-actions {
   position: absolute;
+  z-index: 3;
   right: 10px;
   bottom: 10px;
   display: flex;
   gap: 6px;
+  opacity: 0;
+  transform: translate3d(0, 8px, 0);
+  transition: opacity var(--transition-base), transform var(--transition-base);
+}
+
+.task-image-caption {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 2;
+  display: grid;
+  gap: 3px;
+  padding: 13px 72px 13px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.22), rgba(23, 23, 23, 0.3)),
+    rgba(23, 23, 23, 0.28);
+  color: #fff;
+  opacity: 0;
+  transform: translate3d(0, 10px, 0);
+  backdrop-filter: blur(16px);
+  transition:
+    opacity var(--transition-base),
+    transform var(--transition-base),
+    background var(--transition-base);
+}
+
+.task-image-caption span {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.76;
+}
+
+.task-image-caption strong {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-card:hover .task-image-caption {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.task-card:hover .task-image-actions {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
 }
 
 .task-action-btn,
@@ -266,6 +412,19 @@ function downloadImage() {
 .task-action-btn {
   width: 32px;
   height: 32px;
+  transition: transform var(--transition-base), background var(--transition-base), box-shadow var(--transition-base);
+}
+
+.task-action-btn:hover,
+.task-remove-btn:hover {
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 10px 20px rgba(23, 23, 23, 0.12);
+  transform: translateY(-1px);
+}
+
+.task-action-btn:active,
+.task-remove-btn:active {
+  transform: translateY(0) scale(0.96);
 }
 
 .task-pending {
@@ -274,6 +433,23 @@ function downloadImage() {
   flex-direction: column;
   justify-content: center;
   gap: 14px;
+  overflow: hidden;
+}
+
+.task-pending::after {
+  content: '';
+  position: absolute;
+  inset: auto -20% -28% -20%;
+  height: 58%;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 100%, rgba(60, 110, 232, 0.13), transparent 68%);
+  opacity: 0;
+  transition: opacity var(--transition-base);
+}
+
+.task-card--queued .task-pending::after,
+.task-card--generating .task-pending::after {
+  opacity: 1;
 }
 
 .task-ref-thumb-grid {
@@ -293,6 +469,8 @@ function downloadImage() {
 }
 
 .task-state {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -301,6 +479,8 @@ function downloadImage() {
 }
 
 .task-progress-meta {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -310,15 +490,25 @@ function downloadImage() {
   font-weight: 700;
 }
 
+.task-progress-meta span {
+  padding: 4px 7px;
+  border: 1px solid rgba(60, 110, 232, 0.13);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.56);
+}
+
 .status-dot {
   width: 9px;
   height: 9px;
   border-radius: 50%;
   background: currentColor;
   box-shadow: 0 0 14px currentColor;
+  animation: task-dot 1.2s ease-in-out infinite;
 }
 
 .task-pending p {
+  position: relative;
+  z-index: 1;
   color: var(--color-muted);
   line-height: 1.6;
   margin: 0;
@@ -333,18 +523,28 @@ function downloadImage() {
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
-  padding: 10px;
+  padding: 11px;
   border-top: 1px solid rgba(226, 229, 223, 0.72);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(245, 246, 241, 0.48)),
+    rgba(255, 255, 255, 0.26);
 }
 
 .task-meta span {
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
-  background: var(--color-paper-soft);
+  padding: 5px 8px;
+  border: 1px solid rgba(226, 229, 223, 0.82);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.56);
   color: var(--color-muted);
   font-family: var(--font-ui);
   font-size: 11px;
   font-weight: 700;
+  transition: color var(--transition-base), border-color var(--transition-base), background var(--transition-base);
+}
+
+.task-card:hover .task-meta span {
+  border-color: rgba(207, 212, 203, 0.9);
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .task-remove-btn {
@@ -357,7 +557,113 @@ function downloadImage() {
   color: var(--color-red);
 }
 
+.task-card--failed .task-pending {
+  background:
+    linear-gradient(135deg, rgba(200, 77, 60, 0.08), rgba(255, 255, 255, 0.34)),
+    var(--color-paper-soft);
+}
+
+.task-card--failed .task-progress-meta span {
+  border-color: rgba(200, 77, 60, 0.16);
+  color: var(--color-red);
+}
+
+.task-card--failed .task-status-badge {
+  color: var(--color-red);
+}
+
+.task-card--queued .task-status-badge,
+.task-card--generating .task-status-badge {
+  color: var(--color-blue);
+}
+
 .task-card--done .task-meta span:first-child {
   color: var(--color-green);
+  border-color: rgba(63, 140, 104, 0.22);
+  background: rgba(63, 140, 104, 0.08);
+}
+
+.task-card--done .status-dot,
+.task-card--failed .status-dot {
+  animation: none;
+}
+
+.task-card--generating .task-pending::before,
+.task-card--queued .task-pending::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(110deg, transparent 0%, rgba(255, 255, 255, 0.64) 46%, transparent 62%),
+    transparent;
+  transform: translateX(-120%);
+  animation: pending-sheen 2.1s ease-in-out infinite;
+}
+
+@media (max-width: 640px) {
+  .task-status-badge {
+    top: 10px;
+    left: 10px;
+    opacity: 1;
+    transform: none;
+  }
+
+  .task-image-caption {
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    padding-right: 68px;
+    opacity: 1;
+    transform: none;
+  }
+
+  .task-image-actions {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-card,
+  .task-card:hover,
+  .task-card:hover .task-image,
+  .task-card:hover .task-image-caption {
+    transform: none;
+  }
+
+  .status-dot,
+  .task-card--generating .task-pending::before,
+  .task-card--queued .task-pending::before {
+    animation: none;
+  }
+}
+
+@keyframes task-image-in {
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes task-dot {
+  0%, 100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.55);
+  }
+}
+
+@keyframes pending-sheen {
+  0% {
+    transform: translateX(-120%);
+  }
+
+  52%, 100% {
+    transform: translateX(120%);
+  }
 }
 </style>

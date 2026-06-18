@@ -1,6 +1,6 @@
 <template>
-  <div class="auth-page">
-    <section class="auth-showcase" aria-label="2Bis AI Image Studio">
+  <div class="auth-page auth-page-register">
+    <section v-if="showShowcase" class="auth-showcase" aria-label="2Bis AI Image Studio">
       <div class="showcase-art">
         <img
           class="showcase-image"
@@ -28,7 +28,7 @@
         <div class="art-grain"></div>
       </div>
 
-      <router-link to="/" class="showcase-logo">2Bis</router-link>
+      <router-link to="/" class="showcase-logo" data-cursor="interactive">2Bis</router-link>
       <div class="showcase-copy">
         <span class="eyebrow">AI Image Studio</span>
         <h1>建立你的私人 AI 影像工作室。</h1>
@@ -50,13 +50,13 @@
           <p>用一个账号管理你的创作、额度和生成历史。</p>
         </div>
 
-        <nav class="auth-tabs" aria-label="登录与注册切换">
-          <router-link to="/login">登录</router-link>
+        <nav class="auth-tabs auth-tabs-register" aria-label="登录与注册切换">
+          <router-link to="/login" data-cursor="interactive">登录</router-link>
           <span class="active">注册</span>
         </nav>
 
         <form class="auth-form" @submit.prevent="handleRegister">
-          <label>
+          <label class="field-line">
             用户名
             <input
               v-model="form.username"
@@ -67,7 +67,7 @@
             <span v-if="errors.username" class="input-error">{{ errors.username }}</span>
           </label>
 
-          <label>
+          <label class="field-line">
             密码
             <input
               v-model="form.password"
@@ -79,7 +79,7 @@
             <span v-if="errors.password" class="input-error">{{ errors.password }}</span>
           </label>
 
-          <label>
+          <label class="field-line">
             确认密码
             <input
               v-model="form.confirmPassword"
@@ -91,7 +91,7 @@
             <span v-if="errors.confirmPassword" class="input-error">{{ errors.confirmPassword }}</span>
           </label>
 
-          <button type="submit" class="btn-black btn-auth" :disabled="loading">
+          <button type="submit" class="btn-black btn-auth auth-primary-action" :disabled="loading" data-cursor="interactive">
             {{ loading ? '注册中…' : '创建账号' }}
           </button>
         </form>
@@ -108,6 +108,15 @@ import { useRouter } from 'vue-router'
 import { useAuthGridInteraction } from '../composables/useAuthGridInteraction'
 import { ElMessage } from '../services/toast'
 import { useUserStore } from '../stores/user'
+
+defineOptions({ name: 'Register' })
+
+defineProps({
+  showShowcase: {
+    type: Boolean,
+    default: true
+  }
+})
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -179,6 +188,7 @@ async function handleRegister() {
   grid-template-columns: minmax(420px, 58vw) minmax(380px, 1fr);
   background: #f8f7f2;
   overflow: hidden;
+  animation: auth-page-settle 220ms var(--transition-slow) backwards;
 }
 
 .auth-showcase {
@@ -194,6 +204,7 @@ async function handleRegister() {
   background:
     linear-gradient(135deg, rgba(4, 7, 14, 0.94), rgba(18, 31, 48, 0.86)),
     url('/auth/aria-showcase-blur.webp') center / cover no-repeat;
+  animation: auth-showcase-in 260ms var(--transition-slow) backwards;
 }
 
 .auth-showcase::after {
@@ -236,7 +247,12 @@ async function handleRegister() {
   inset: 0;
   z-index: 3;
   background:
-    linear-gradient(90deg, transparent calc(100% - clamp(55px, 4.5vw, 75px)), rgba(255, 253, 250, 0.34) calc(100% - clamp(37px, 3vw, 52px)), #fffdfa 100%),
+    linear-gradient(
+      90deg,
+      transparent calc(100% - clamp(58px, 5vw, 86px)),
+      rgba(255, 253, 250, 0.42) calc(100% - clamp(38px, 3.4vw, 58px)),
+      #fffdfa 100%
+    ),
     radial-gradient(circle at 50% 51%, transparent 0 28%, rgba(0, 0, 0, 0.18) 55%, rgba(0, 0, 0, 0.72) 100%),
     linear-gradient(115deg, rgba(255, 255, 255, 0.08), transparent 28%);
   pointer-events: none;
@@ -392,11 +408,14 @@ async function handleRegister() {
   padding: clamp(24px, 5vw, 72px);
   display: grid;
   place-items: center;
-  overflow: hidden;
-  isolation: isolate;
   background:
-    radial-gradient(circle at 82% 14%, rgba(60, 110, 232, 0.1), transparent 18rem),
-    linear-gradient(180deg, #fffdfa, #f6f4ef);
+    radial-gradient(circle at var(--grid-target-x) var(--grid-target-y), rgb(var(--auth-accent-rgb) / 0.13), transparent 16rem),
+    radial-gradient(circle at 82% 14%, rgb(var(--auth-accent-rgb) / 0.11), transparent 18rem),
+    radial-gradient(circle at 14% 88%, rgb(var(--auth-warm-rgb) / 0.1), transparent 18rem),
+    linear-gradient(180deg, var(--auth-panel-bg-start), var(--auth-panel-bg-mid) 48%, var(--auth-panel-bg-end));
+  isolation: isolate;
+  overflow: hidden;
+  transition: background 420ms var(--transition-slow);
 }
 
 .auth-panel::before,
@@ -404,78 +423,72 @@ async function handleRegister() {
   content: '';
   position: absolute;
   inset: 0;
-  z-index: 0;
   pointer-events: none;
 }
 
 .auth-panel::before {
-  /* 右侧背景网格保持低对比度，避免抢走登录表单的视觉层级。 */
+  z-index: -2;
   opacity: 0.62;
-  background-image:
-    linear-gradient(90deg, rgba(32, 42, 57, 0.058) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(32, 42, 57, 0.05) 1px, transparent 1px);
+  background:
+    linear-gradient(90deg, var(--auth-panel-line) 1px, transparent 1px),
+    linear-gradient(180deg, var(--auth-panel-line) 1px, transparent 1px);
   background-size: var(--grid-size) var(--grid-size);
-  background-position: center;
-  mask-image: radial-gradient(ellipse at 58% 46%, #000 0 58%, rgba(0, 0, 0, 0.5) 76%, transparent 100%);
-}
-
-.auth-panel::after {
-  opacity: 0;
-  background-image:
-    radial-gradient(ellipse at var(--grid-target-x) var(--grid-target-y), rgba(60, 110, 232, 0.14), transparent 9rem),
-    radial-gradient(ellipse at var(--grid-tail-x) var(--grid-tail-y), rgba(60, 110, 232, 0.11), transparent 7rem),
-    linear-gradient(90deg, rgba(60, 110, 232, 0.2) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(60, 110, 232, 0.16) 1px, transparent 1px);
-  background-size:
-    100% 100%,
-    100% 100%,
-    var(--grid-size) var(--grid-size),
-    var(--grid-size) var(--grid-size);
   background-position:
-    0 0,
-    0 0,
     calc(50% + var(--grid-warp-x)) calc(50% + var(--grid-warp-y)),
     calc(50% - var(--grid-warp-y)) calc(50% + var(--grid-warp-x));
   mask-image:
     radial-gradient(
       ellipse at var(--grid-x) var(--grid-y),
-      #000 0 44px,
-      rgba(0, 0, 0, 0.94) 78px,
-      rgba(0, 0, 0, 0.38) calc(var(--grid-softness) - 34px),
+      rgba(0, 0, 0, 1) 0,
+      rgba(0, 0, 0, 0.42) calc(var(--grid-softness) - 34px),
       transparent var(--grid-softness)
     ),
     radial-gradient(
       ellipse at var(--grid-tail-x) var(--grid-tail-y),
-      rgba(0, 0, 0, 0.72) 0 32px,
-      rgba(0, 0, 0, 0.28) 86px,
+      rgba(0, 0, 0, 0.64) 0,
       transparent calc(var(--grid-softness) - 12px)
     );
   mask-composite: add;
-  mix-blend-mode: multiply;
   transform-origin: var(--grid-x) var(--grid-y);
   transform:
     translate3d(var(--grid-warp-x), var(--grid-warp-y), 0)
     rotate(var(--grid-tilt))
     scale(var(--grid-stretch-x), var(--grid-stretch-y));
-  transition:
-    opacity 220ms ease;
-  will-change: opacity, transform, mask-image, background-position;
+  transition: opacity 180ms var(--transition-base);
+  will-change: transform, opacity, background-position;
+}
+
+.auth-panel::after {
+  z-index: -1;
+  opacity: 0;
+  background:
+    radial-gradient(ellipse at var(--grid-target-x) var(--grid-target-y), rgb(var(--auth-accent-rgb) / 0.15), transparent 9rem),
+    radial-gradient(ellipse at var(--grid-tail-x) var(--grid-tail-y), rgb(var(--auth-accent-rgb) / 0.12), transparent 7rem);
+  transition: opacity 180ms var(--transition-base);
+}
+
+.auth-panel.is-grid-active::before {
+  opacity: 0.88;
 }
 
 .auth-panel.is-grid-active::after {
-  opacity: 0.76;
+  opacity: 1;
 }
 
 .auth-card {
-  width: min(100%, 440px);
   position: relative;
-  z-index: 1;
+  width: min(100%, 440px);
   padding: clamp(30px, 4vw, 44px);
   border: 1px solid rgba(226, 229, 223, 0.86);
   border-radius: 32px;
-  background: rgba(255, 255, 255, 0.84);
-  box-shadow: 0 24px 70px rgba(28, 28, 28, 0.1);
+  background:
+    linear-gradient(180deg, var(--auth-card-bg), rgba(255, 255, 255, 0.72)),
+    radial-gradient(circle at 18% 0%, rgb(var(--auth-accent-rgb) / 0.08), transparent 16rem);
+  box-shadow:
+    0 24px 70px rgba(28, 28, 28, 0.1),
+    0 0 0 1px var(--auth-panel-shadow);
   backdrop-filter: blur(18px);
+  animation: auth-card-in 260ms 50ms var(--transition-slow) backwards;
 }
 
 .auth-heading {
@@ -483,7 +496,7 @@ async function handleRegister() {
 }
 
 .auth-heading .eyebrow {
-  color: var(--color-blue);
+  color: rgb(var(--auth-accent-rgb));
 }
 
 .auth-heading h2 {
@@ -505,7 +518,7 @@ async function handleRegister() {
   grid-template-columns: repeat(2, 1fr);
   border: 1px solid var(--color-line);
   border-radius: 999px;
-  background: #f3f4ef;
+  background: var(--auth-control-bg-strong);
   font-family: var(--font-ui);
   font-size: 14px;
   font-weight: 900;
@@ -532,8 +545,8 @@ async function handleRegister() {
 
 .auth-tabs .active {
   color: var(--color-ink);
-  background: #fff;
-  box-shadow: 0 8px 20px rgba(23, 23, 23, 0.08);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 8px 20px var(--auth-panel-shadow);
 }
 
 .auth-form {
@@ -556,7 +569,7 @@ async function handleRegister() {
   padding: 0 16px;
   border: 1px solid transparent;
   border-radius: 16px;
-  background: #f4f5f1;
+  background: var(--auth-control-bg);
   color: var(--color-ink);
   outline: none;
   box-shadow: inset 0 0 0 1px rgba(210, 214, 206, 0.9);
@@ -572,12 +585,12 @@ async function handleRegister() {
 }
 
 .auth-input:focus {
-  border-color: rgba(60, 110, 232, 0.5);
+  border-color: rgb(var(--auth-accent-rgb) / 0.5);
   background: #fff;
   box-shadow:
-    inset 0 0 0 1px rgba(60, 110, 232, 0.24),
-    0 0 0 5px rgba(60, 110, 232, 0.1),
-    0 14px 34px rgba(60, 110, 232, 0.08);
+    inset 0 0 0 1px rgb(var(--auth-accent-rgb) / 0.24),
+    0 0 0 5px rgb(var(--auth-accent-rgb) / 0.1),
+    0 14px 34px rgb(var(--auth-accent-rgb) / 0.08);
   transform: translateY(-1px);
 }
 
@@ -625,6 +638,40 @@ async function handleRegister() {
   }
 }
 
+@keyframes auth-page-settle {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes auth-showcase-in {
+  from {
+    filter: saturate(0.8) brightness(0.9);
+  }
+
+  to {
+    filter: saturate(1) brightness(1);
+  }
+}
+
+@keyframes auth-card-in {
+  from {
+    opacity: 0;
+    transform: translate3d(16px, 0, 0) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
 @media (max-width: 980px) {
   .auth-page {
     grid-template-columns: 1fr;
@@ -638,13 +685,6 @@ async function handleRegister() {
     object-position: center 58%;
   }
 
-  .showcase-art::after {
-    background:
-      linear-gradient(180deg, transparent calc(100% - 75px), rgba(255, 253, 250, 0.38) calc(100% - 45px), #fffdfa 100%),
-      radial-gradient(circle at 50% 51%, transparent 0 28%, rgba(0, 0, 0, 0.18) 55%, rgba(0, 0, 0, 0.72) 100%),
-      linear-gradient(115deg, rgba(255, 255, 255, 0.08), transparent 28%);
-  }
-
   .showcase-poster,
   .art-frame {
     display: none;
@@ -652,12 +692,10 @@ async function handleRegister() {
 
   .auth-panel {
     min-height: auto;
-    padding: clamp(24px, 5vw, 72px);
-    place-items: center;
   }
 
-  .auth-panel::after {
-    display: none;
+  .auth-page-register .auth-panel {
+    grid-column: 1;
   }
 
   .showcase-copy {
@@ -687,12 +725,6 @@ async function handleRegister() {
   .auth-card {
     padding: 24px;
     border-radius: 24px;
-  }
-}
-
-@media (hover: none), (pointer: coarse) {
-  .auth-panel::after {
-    display: none;
   }
 }
 </style>

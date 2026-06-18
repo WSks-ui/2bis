@@ -1,5 +1,5 @@
 <template>
-  <header class="navbar">
+  <header class="navbar" :class="{ 'navbar--menu-open': userMenuOpen }">
     <div class="navbar-inner">
       <router-link to="/" class="brand" aria-label="2Bis 创作台">
         <span class="brand-word">2Bis</span>
@@ -7,22 +7,25 @@
       </router-link>
 
       <nav class="nav-links" aria-label="主导航">
-        <router-link to="/" class="nav-link" active-class="nav-link--active">创作台</router-link>
-        <router-link to="/history" class="nav-link" active-class="nav-link--active">历史记录</router-link>
-        <router-link to="/plans" class="nav-link" active-class="nav-link--active">计划订阅</router-link>
+        <router-link to="/" class="nav-link" active-class="nav-link--active" data-spotlight>创作台</router-link>
+        <router-link to="/history" class="nav-link" active-class="nav-link--active" data-spotlight>历史记录</router-link>
+        <router-link to="/plans" class="nav-link" active-class="nav-link--active" data-spotlight>计划订阅</router-link>
       </nav>
 
       <div class="navbar-actions">
         <button
           class="btn-checkin"
-          :class="{ 'btn-checkin-done': !checkinAvailable }"
-          :disabled="!checkinAvailable"
+          :class="{ 'btn-checkin-done': !checkinAvailable, 'btn-checkin-loading': checkinLoading }"
+          :disabled="!checkinAvailable || checkinLoading"
+          :aria-busy="checkinLoading"
           @click="doCheckin"
+          data-spotlight
         >
-          {{ checkinLabel }}
+          <span class="checkin-dot" aria-hidden="true"></span>
+          <span>{{ checkinLabel }}</span>
         </button>
 
-        <div class="balance-pair">
+        <div class="balance-pair" aria-label="当前可用额度">
           <PointsDisplay :balance="pointsStore.freePoints" label="体验积分" variant="experience" />
           <PointsDisplay :balance="pointsStore.monthlyQuotaRemaining" label="订阅额度" variant="quota" />
         </div>
@@ -30,22 +33,43 @@
         <span v-if="pointsStore.planLabel" class="plan-badge">{{ pointsStore.planLabel }}</span>
 
         <div class="user-menu-wrap">
-          <button class="user-menu" title="账户菜单" @click.stop="toggleUserMenu">
+          <button
+            class="user-menu"
+            title="账户菜单"
+            aria-haspopup="menu"
+            :aria-expanded="userMenuOpen"
+            @click.stop="toggleUserMenu"
+            data-spotlight
+          >
             <span class="avatar">{{ avatarText }}</span>
             <span class="username-text">{{ userStore.username || 'User' }}</span>
-            <span class="chevron">⌄</span>
+            <span class="chevron" :class="{ 'chevron--open': userMenuOpen }">⌄</span>
           </button>
 
-          <div v-if="userMenuOpen" class="user-popover" @click.stop>
+          <Transition name="modal-pop">
+          <div v-if="userMenuOpen" class="user-popover" role="menu" @click.stop>
             <div class="user-popover-head">
               <strong>{{ userStore.username || '未命名用户' }}</strong>
               <span>{{ pointsStore.planLabel || '未订阅' }}</span>
             </div>
-            <router-link to="/plans" @click="userMenuOpen = false">管理订阅</router-link>
-            <router-link to="/history" @click="userMenuOpen = false">查看历史</router-link>
-            <router-link v-if="userStore.isAdmin" to="/admin/api-keys" @click="userMenuOpen = false">API Key 控制台</router-link>
-            <button type="button" class="logout-action" @click="logout">退出登录</button>
+            <router-link to="/plans" role="menuitem" @click="userMenuOpen = false">
+              <span class="menu-icon">P</span>
+              管理订阅
+            </router-link>
+            <router-link to="/history" role="menuitem" @click="userMenuOpen = false">
+              <span class="menu-icon">H</span>
+              查看历史
+            </router-link>
+            <router-link v-if="userStore.isAdmin" to="/admin/api-keys" role="menuitem" @click="userMenuOpen = false">
+              <span class="menu-icon">K</span>
+              API Key 控制台
+            </router-link>
+            <button type="button" class="logout-action" role="menuitem" @click="logout">
+              <span class="menu-icon">Q</span>
+              退出登录
+            </button>
           </div>
+          </Transition>
         </div>
       </div>
     </div>
@@ -54,14 +78,16 @@
       <router-link to="/" class="mobile-tab" active-class="mobile-tab--active">创作</router-link>
       <router-link to="/history" class="mobile-tab" active-class="mobile-tab--active">历史</router-link>
       <router-link to="/plans" class="mobile-tab" active-class="mobile-tab--active">订阅</router-link>
-      <button class="mobile-tab mobile-tab-button" :disabled="!checkinAvailable" @click="doCheckin">
-        {{ checkinAvailable ? '签到' : '已签' }}
+      <button class="mobile-tab mobile-tab-button" :disabled="!checkinAvailable || checkinLoading" @click="doCheckin">
+        {{ checkinLoading ? '...' : checkinAvailable ? '签到' : '已签' }}
       </button>
     </nav>
 
+    <Transition name="modal-pop">
     <div v-if="checkinResult" class="checkin-toast" :class="{ 'toast-out': toastHiding }">
       签到成功，第 {{ checkinResult.day_number }} 天，+{{ checkinResult.reward }} 体验积分
     </div>
+    </Transition>
   </header>
 </template>
 
@@ -86,6 +112,7 @@ const userMenuOpen = ref(false)
 let toastTimer = null
 
 const checkinLabel = computed(() => {
+  if (checkinLoading.value) return '签到中'
   if (!checkinAvailable.value && checkinDay.value > 0) return '已签到'
   return '签到'
 })
@@ -106,6 +133,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('click', closeUserMenu)
+  clearTimeout(toastTimer)
 })
 
 async function doCheckin() {
@@ -161,8 +189,17 @@ function logout() {
   top: 0;
   z-index: 100;
   border-bottom: 1px solid rgba(207, 212, 203, 0.82);
-  background: rgba(251, 251, 248, 0.86);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 252, 0.94), rgba(251, 251, 248, 0.82)),
+    rgba(251, 251, 248, 0.86);
   backdrop-filter: blur(22px);
+  animation: nav-drop 520ms var(--ease-out-soft) both;
+  transition: border-color var(--transition-base), box-shadow var(--transition-base), background var(--transition-base);
+}
+
+.navbar--menu-open {
+  border-color: rgba(23, 23, 23, 0.08);
+  box-shadow: 0 16px 46px rgba(23, 23, 23, 0.07);
 }
 
 .navbar-inner {
@@ -183,6 +220,11 @@ function logout() {
   width: max-content;
   color: var(--color-ink);
   text-decoration: none;
+  transition: transform var(--transition-base), color var(--transition-base);
+}
+
+.brand:hover {
+  transform: translateY(-1px) skewX(-3deg);
 }
 
 .brand-word {
@@ -191,6 +233,11 @@ function logout() {
   font-weight: 900;
   letter-spacing: -0.08em;
   font-style: italic;
+  transition: letter-spacing var(--transition-base);
+}
+
+.brand:hover .brand-word {
+  letter-spacing: -0.1em;
 }
 
 .brand-subtitle {
@@ -212,23 +259,30 @@ function logout() {
   position: relative;
   display: inline-flex;
   align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
   color: var(--color-muted);
   font-family: var(--font-ui);
   font-size: 14px;
   font-weight: 700;
   text-decoration: none;
-  transition: color var(--transition-base);
+  transition:
+    color var(--transition-base),
+    background var(--transition-base),
+    transform var(--transition-base),
+    box-shadow var(--transition-base);
 }
 
 .nav-link::after {
   content: '';
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: 3px;
+  left: 16px;
+  right: 16px;
+  bottom: 4px;
+  height: 2px;
   border-radius: 999px;
-  background: var(--color-ink);
+  background: linear-gradient(90deg, transparent, var(--color-ink), transparent);
   transform: scaleX(0);
   transform-origin: center;
   transition: transform var(--transition-base);
@@ -237,6 +291,22 @@ function logout() {
 .nav-link:hover,
 .nav-link--active {
   color: var(--color-ink);
+}
+
+.nav-link:hover {
+  background: rgba(255, 255, 255, 0.62);
+  transform: translateY(-1px);
+}
+
+.nav-link:hover::after {
+  transform: scaleX(0.48);
+}
+
+.nav-link--active {
+  background:
+    linear-gradient(135deg, rgba(23, 23, 23, 0.07), rgba(255, 255, 255, 0.66)),
+    rgba(255, 255, 255, 0.54);
+  box-shadow: inset 0 0 0 1px rgba(23, 23, 23, 0.04), 0 8px 20px rgba(23, 23, 23, 0.05);
 }
 
 .nav-link--active::after {
@@ -252,31 +322,76 @@ function logout() {
 .balance-pair {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 10px;
 }
 
 .btn-checkin {
-  min-width: 64px;
-  padding: 7px 14px;
+  position: relative;
+  overflow: hidden;
+  min-width: 82px;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 7px 14px 7px 10px;
   border: 1px solid var(--color-line-strong);
   border-radius: 999px;
-  background: #fff;
+  background:
+    linear-gradient(135deg, rgba(63, 140, 104, 0.1), rgba(255, 255, 255, 0.7)),
+    #fff;
   color: var(--color-ink);
   cursor: pointer;
   font-family: var(--font-ui);
   font-size: 12px;
   font-weight: 800;
-  transition: transform var(--transition-base), border-color var(--transition-base);
+  transition:
+    transform var(--transition-base),
+    border-color var(--transition-base),
+    box-shadow var(--transition-base),
+    opacity var(--transition-base),
+    background var(--transition-base);
+}
+
+.checkin-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--color-green);
+  box-shadow: 0 0 0 5px rgba(63, 140, 104, 0.12);
+  transition: transform var(--transition-base), opacity var(--transition-base);
 }
 
 .btn-checkin:hover:not(:disabled) {
   transform: translateY(-1px);
-  border-color: var(--color-ink);
+  border-color: rgba(63, 140, 104, 0.36);
+  box-shadow: 0 12px 24px rgba(63, 140, 104, 0.13);
+}
+
+.btn-checkin:hover:not(:disabled) .checkin-dot {
+  transform: scale(1.16);
+}
+
+.btn-checkin:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
 }
 
 .btn-checkin:disabled {
   color: var(--color-green);
   cursor: default;
+}
+
+.btn-checkin-done {
+  background: rgba(255, 255, 255, 0.64);
+}
+
+.btn-checkin-done .checkin-dot {
+  opacity: 0.42;
+  box-shadow: none;
+}
+
+.btn-checkin-loading .checkin-dot {
+  animation: checkin-breathe 820ms ease-in-out infinite;
 }
 
 .plan-badge {
@@ -288,20 +403,36 @@ function logout() {
   font-family: var(--font-ui);
   font-size: 12px;
   font-weight: 800;
+  animation: badge-in 420ms var(--ease-out-soft) both;
 }
 
 .user-menu {
   display: inline-flex;
   align-items: center;
   gap: 9px;
-  padding: 3px 0 3px 3px;
-  border: 0;
-  background: transparent;
+  min-height: 40px;
+  padding: 4px 10px 4px 4px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.46);
   color: var(--color-ink);
   cursor: pointer;
   font-family: var(--font-ui);
   font-size: 13px;
   font-weight: 700;
+  transition:
+    transform var(--transition-base),
+    color var(--transition-base),
+    border-color var(--transition-base),
+    background var(--transition-base),
+    box-shadow var(--transition-base);
+}
+
+.user-menu:hover {
+  border-color: rgba(23, 23, 23, 0.08);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 10px 24px rgba(23, 23, 23, 0.06);
+  transform: translateY(-1px);
 }
 
 .user-menu-wrap {
@@ -312,7 +443,7 @@ function logout() {
   position: absolute;
   top: calc(100% + 12px);
   right: 0;
-  width: 210px;
+  width: 236px;
   padding: 10px;
   display: grid;
   gap: 6px;
@@ -321,13 +452,18 @@ function logout() {
   background: rgba(255, 255, 255, 0.96);
   box-shadow: var(--shadow-lg);
   backdrop-filter: blur(18px);
+  transform-origin: 90% 0;
 }
 
 .user-popover-head {
-  padding: 8px 9px 10px;
+  padding: 10px 10px 12px;
   display: grid;
   gap: 2px;
   border-bottom: 1px solid var(--color-line);
+  background:
+    radial-gradient(circle at 10% 20%, rgba(60, 110, 232, 0.1), transparent 34%),
+    var(--color-paper-soft);
+  border-radius: calc(var(--radius-lg) - 8px);
 }
 
 .user-popover-head strong {
@@ -344,10 +480,11 @@ function logout() {
 
 .user-popover a,
 .logout-action {
-  min-height: 34px;
-  padding: 0 9px;
+  min-height: 38px;
+  padding: 0 10px;
   display: inline-flex;
   align-items: center;
+  gap: 9px;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -358,16 +495,35 @@ function logout() {
   font-weight: 800;
   text-align: left;
   text-decoration: none;
+  transition:
+    background var(--transition-base),
+    color var(--transition-base),
+    transform var(--transition-base);
 }
 
 .user-popover a:hover,
 .logout-action:hover {
   background: var(--color-paper-soft);
   color: var(--color-ink);
+  transform: translateX(2px);
 }
 
 .logout-action {
   color: var(--color-red);
+}
+
+.menu-icon {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(23, 23, 23, 0.06);
+  color: var(--color-ink);
+  font-family: var(--font-heading);
+  font-size: 10px;
+  font-weight: 900;
 }
 
 .avatar {
@@ -381,12 +537,24 @@ function logout() {
   color: #fff;
   font-size: 12px;
   font-weight: 900;
+  transition: transform var(--transition-base), box-shadow var(--transition-base);
+}
+
+.user-menu:hover .avatar {
+  transform: rotate(-6deg) scale(1.04);
+  box-shadow: 0 8px 20px rgba(23, 23, 23, 0.14);
 }
 
 .chevron {
   color: var(--color-soft);
   font-size: 15px;
   line-height: 1;
+  transition: transform var(--transition-base), color var(--transition-base);
+}
+
+.chevron--open {
+  color: var(--color-ink);
+  transform: rotate(180deg);
 }
 
 .mobile-tabs {
@@ -491,15 +659,53 @@ function logout() {
     font-size: 12px;
     font-weight: 800;
     text-decoration: none;
+    transition: background var(--transition-base), color var(--transition-base), transform var(--transition-base);
   }
 
   .mobile-tab--active {
     background: var(--color-ink);
     color: #fff;
+    transform: translateY(-1px);
   }
 
   .mobile-tab-button:disabled {
     color: var(--color-green);
+  }
+}
+
+@keyframes nav-drop {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -12px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes badge-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -4px, 0) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes checkin-breathe {
+  0%, 100% {
+    opacity: 0.48;
+    transform: scale(0.82);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
   }
 }
 </style>

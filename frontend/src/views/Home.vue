@@ -1,8 +1,8 @@
 <template>
   <div class="home-page paper-page">
     <main class="studio-shell">
-      <aside class="tool-panel surface-card">
-        <section class="panel-section">
+      <aside v-reveal class="tool-panel surface-card">
+        <section v-reveal="40" class="panel-section">
           <div class="section-title">生成模式</div>
           <div class="mode-grid">
             <button
@@ -18,7 +18,7 @@
           </div>
         </section>
 
-        <section class="panel-section">
+        <section v-reveal="80" class="panel-section">
           <div class="section-title">工作流</div>
           <div class="workflow-list">
             <button
@@ -53,7 +53,7 @@
           </div>
         </section>
 
-        <section class="panel-section">
+        <section v-reveal="120" class="panel-section">
           <div class="section-title">质量</div>
           <div class="choice-grid three">
             <button
@@ -69,7 +69,7 @@
           </div>
         </section>
 
-        <section class="panel-section">
+        <section v-reveal="160" class="panel-section">
           <div class="section-title">尺寸比例</div>
           <div class="ratio-scroll">
             <button
@@ -96,6 +96,7 @@
           </div>
         </section>
 
+        <Transition name="modal-pop">
         <section v-if="needImage" class="panel-section">
           <div class="section-title">{{ imageInputTitle }}</div>
           <input
@@ -125,13 +126,15 @@
           </div>
           <p v-if="allowMultipleReferenceImages" class="upload-meta">已上传 {{ refImages.length }}/{{ MAX_REFERENCE_IMAGES }} 张参考图</p>
         </section>
+        </Transition>
       </aside>
 
       <section class="studio-main">
-        <section class="prompt-card surface-card">
+        <section v-reveal="80" class="prompt-card surface-card" :class="{ 'prompt-card--ready': canSubmit }">
+          <div class="prompt-orbit" aria-hidden="true"></div>
           <div class="prompt-head">
             <label for="prompt-input">提示词</label>
-            <span>{{ prompt.length }}/1000</span>
+            <span :class="{ 'count-warning': prompt.length > 860 }">{{ prompt.length }}/1000</span>
           </div>
           <textarea
             id="prompt-input"
@@ -143,24 +146,34 @@
             rows="5"
             @keydown.enter.exact.prevent="handleSubmit"
           ></textarea>
+          <div class="prompt-signal" aria-hidden="true">
+            <span :style="{ width: `${promptProgress}%` }"></span>
+          </div>
           <div class="prompt-actions">
             <div class="quick-actions">
-              <button type="button" @click="clearPrompt">清空</button>
+              <button type="button" :disabled="!prompt" @click="clearPrompt">清空</button>
               <button type="button" @click="fillPromptExample">随机提示</button>
-              <button type="button" @click="polishPrompt">优化提示</button>
+              <button type="button" :class="{ active: prompt.trim() }" @click="polishPrompt">优化提示</button>
             </div>
-            <span class="cost-note">{{ workflowSummary }}</span>
+            <span class="cost-note">
+              <span>{{ workflowSummary }}</span>
+              <strong>{{ currentCost }} 额度</strong>
+            </span>
           </div>
         </section>
 
-        <section class="generate-bar surface-card">
+        <section v-reveal="130" class="generate-bar surface-card">
           <button class="btn-black generate-button" :disabled="!canSubmit" @click="handleSubmit">
-            <span>{{ canSubmit ? `生成（消耗 ${currentCost} 额度）` : '填写提示词后生成' }}</span>
+            <span class="generate-copy">
+              <strong>{{ canSubmit ? '开始生成' : '填写提示词后生成' }}</strong>
+              <small>{{ canSubmit ? submitHint : 'Enter 可快速提交' }}</small>
+            </span>
+            <span v-if="canSubmit" class="generate-arrow" aria-hidden="true">→</span>
           </button>
           <button class="tune-button" type="button" @click="focusPanel">参数</button>
         </section>
 
-        <section class="task-log surface-card">
+        <section v-reveal="180" class="task-log surface-card">
           <div class="block-head">
             <div>
               <h2>任务日志</h2>
@@ -170,24 +183,28 @@
           </div>
 
           <div v-if="!recentTasks.length" class="empty-log">
-            暂无任务。输入提示词后会先进入队列，失败任务会自动退款。
+            <span class="empty-log-mark" aria-hidden="true"></span>
+            <div>
+              <strong>等待第一张作品</strong>
+              <p>输入提示词后会先进入队列，失败任务会自动退款。</p>
+            </div>
           </div>
 
-          <div v-else class="log-list">
+          <TransitionGroup v-else name="list" tag="div" class="log-list">
             <article v-for="task in recentTasks" :key="task.id" class="log-row">
               <span class="status-dot" :class="`status-${task.status}`"></span>
               <div class="log-prompt">
                 <strong>{{ statusLabel(task.status) }}</strong>
                 <span>{{ task.prompt }}</span>
               </div>
-              <span>{{ qualityLabel(task.quality) }}</span>
-              <span>{{ task.workflowType === 'professional' ? '专业工作流' : '标准生成' }}</span>
-              <span>{{ task.workflowCost || task.pointsCost || qualityCost(task.quality) }} 额度</span>
+              <span class="log-chip">{{ qualityLabel(task.quality) }}</span>
+              <span class="log-chip">{{ task.workflowType === 'professional' ? '专业工作流' : '标准生成' }}</span>
+              <span class="log-chip strong">{{ task.workflowCost || task.pointsCost || qualityCost(task.quality) }} 额度</span>
             </article>
-          </div>
+          </TransitionGroup>
         </section>
 
-        <section class="results-section">
+        <section v-reveal="230" class="results-section">
           <div class="block-head results-head">
             <div>
               <h2>结果画廊</h2>
@@ -200,18 +217,25 @@
           </div>
 
           <div v-if="tasksStore.tasks.length === 0" class="gallery-empty surface-card">
-            <h1>创作画布</h1>
-            <p>选择模式、工作流、质量和尺寸，然后描述你要生成的画面。</p>
+            <div class="empty-canvas-preview" aria-hidden="true">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <div>
+              <h1>创作画布</h1>
+              <p>选择模式、工作流、质量和尺寸，然后描述你要生成的画面。</p>
+            </div>
           </div>
 
-          <div v-else class="gallery-grid">
+          <TransitionGroup v-else name="list" tag="div" class="gallery-grid">
             <TaskCard
               v-for="task in sortedTasks"
               :key="task.id"
               :task="task"
               @remove="tasksStore.removeTask(task.id)"
             />
-          </div>
+          </TransitionGroup>
         </section>
       </section>
     </main>
@@ -313,6 +337,7 @@ const selectedSizeGroup = computed(() => {
 })
 const availableSizes = computed(() => selectedSizeGroup.value?.sizes || [])
 const currentCost = computed(() => qualityCost(quality.value))
+const promptProgress = computed(() => Math.min(100, Math.round((prompt.value.length / 1000) * 100)))
 const qualitySource = computed(() => {
   if (selectedWorkflow.value?.uses_experience_points && quality.value !== 'high') {
     return '优先体验积分'
@@ -323,6 +348,7 @@ const workflowSummary = computed(() => {
   const workflowName = selectedWorkflow.value?.name || '标准生成'
   return `${workflowName} · ${qualityLabel(quality.value)} · ${formatImageSize(size.value)}`
 })
+const submitHint = computed(() => `${qualitySource.value} · ${formatImageSize(size.value)}`)
 const placeholder = computed(() => {
   if (mode.value === 'text2img') return '描述画面、主体、风格、光线与构图。例：清晨湖边的极简建筑，柔和自然光，画面安静。'
   if (mode.value === 'ref2img') return '结合参考图说明想保留什么、改变什么。'
@@ -554,6 +580,28 @@ function handleSubmit() {
   min-width: 0;
   overflow: hidden;
   padding: 24px;
+  transform-origin: 20% 0;
+}
+
+.tool-panel::before,
+.prompt-card::before,
+.task-log::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.66), transparent 32%),
+    radial-gradient(circle at 14% 0%, rgba(60, 110, 232, 0.08), transparent 17rem);
+  opacity: 0;
+  transition: opacity var(--transition-base);
+}
+
+.tool-panel:hover::before,
+.prompt-card:hover::before,
+.task-log:hover::before {
+  opacity: 1;
 }
 
 .panel-section + .panel-section {
@@ -596,7 +644,13 @@ function handleSubmit() {
   color: var(--color-ink);
   cursor: pointer;
   font-family: var(--font-ui);
-  transition: border-color var(--transition-base), background var(--transition-base), transform var(--transition-base), box-shadow var(--transition-base);
+  transform: translateZ(0);
+  transition:
+    border-color var(--transition-base),
+    background var(--transition-base),
+    color var(--transition-base),
+    transform var(--transition-base),
+    box-shadow var(--transition-base);
 }
 
 .mode-button {
@@ -612,6 +666,7 @@ function handleSubmit() {
 .mode-button span {
   color: var(--color-blue);
   font-size: 14px;
+  transition: transform var(--transition-base), color var(--transition-base);
 }
 
 .mode-button.active,
@@ -622,6 +677,11 @@ function handleSubmit() {
   border-color: var(--color-blue);
   background: rgba(60, 110, 232, 0.07);
   box-shadow: 0 0 0 1px rgba(60, 110, 232, 0.1);
+  transform: translateY(-1px);
+}
+
+.mode-button.active span {
+  transform: translateY(-1px) rotate(-6deg);
 }
 
 .workflow-list {
@@ -630,6 +690,8 @@ function handleSubmit() {
 }
 
 .workflow-card {
+  position: relative;
+  overflow: hidden;
   width: 100%;
   min-height: 68px;
   padding: 12px;
@@ -651,6 +713,14 @@ function handleSubmit() {
   background: var(--color-paper-soft);
   color: var(--color-ink);
   font-weight: 900;
+  transition: background var(--transition-base), color var(--transition-base), transform var(--transition-base);
+}
+
+.workflow-card.active .workflow-mark,
+.workflow-card:hover .workflow-mark {
+  background: var(--color-blue);
+  color: #fff;
+  transform: rotate(-8deg) scale(1.04);
 }
 
 .workflow-copy {
@@ -672,9 +742,16 @@ function handleSubmit() {
 .workflow-arrow {
   color: var(--color-blue);
   font-size: 18px;
+  transition: transform var(--transition-base);
+}
+
+.workflow-card:hover .workflow-arrow {
+  transform: translateX(3px);
 }
 
 .workflow-detail {
+  position: relative;
+  overflow: hidden;
   margin-top: 12px;
   padding: 12px;
   display: grid;
@@ -682,6 +759,7 @@ function handleSubmit() {
   border: 1px solid rgba(60, 110, 232, 0.18);
   border-radius: var(--radius-md);
   background: rgba(60, 110, 232, 0.045);
+  animation: detail-in 380ms var(--ease-out-soft) both;
 }
 
 .workflow-detail div {
@@ -698,6 +776,8 @@ function handleSubmit() {
 }
 
 .choice-card {
+  position: relative;
+  overflow: hidden;
   min-height: 48px;
   padding: 9px;
   display: grid;
@@ -742,6 +822,8 @@ function handleSubmit() {
 }
 
 .resolution-button {
+  position: relative;
+  overflow: hidden;
   min-height: 42px;
   padding: 8px 11px;
   display: flex;
@@ -810,6 +892,8 @@ function handleSubmit() {
   font-weight: 900;
   line-height: 1;
   backdrop-filter: blur(8px);
+  border-radius: var(--radius-sm);
+  animation: image-pop 360ms var(--ease-out-soft) both;
 }
 
 .upload-placeholder {
@@ -838,7 +922,34 @@ function handleSubmit() {
 }
 
 .prompt-card {
+  position: relative;
   padding: 22px;
+  overflow: hidden;
+}
+
+.prompt-orbit {
+  position: absolute;
+  top: -64px;
+  right: -58px;
+  width: 170px;
+  height: 170px;
+  pointer-events: none;
+  border: 1px solid rgba(60, 110, 232, 0.1);
+  border-radius: 46% 54% 48% 52%;
+  background:
+    radial-gradient(circle at 34% 32%, rgba(60, 110, 232, 0.14), transparent 34%),
+    radial-gradient(circle at 68% 72%, rgba(63, 140, 104, 0.12), transparent 28%);
+  opacity: 0.58;
+  transform: rotate(-12deg) scale(0.94);
+  transition:
+    opacity var(--transition-base),
+    transform 620ms var(--ease-out-soft);
+}
+
+.prompt-card--ready .prompt-orbit,
+.prompt-card:focus-within .prompt-orbit {
+  opacity: 0.9;
+  transform: rotate(8deg) scale(1);
 }
 
 .prompt-head,
@@ -858,6 +969,15 @@ function handleSubmit() {
   font-weight: 800;
 }
 
+.prompt-head span {
+  transition: color var(--transition-base), transform var(--transition-base);
+}
+
+.prompt-head .count-warning {
+  color: var(--color-orange);
+  transform: translateY(-1px);
+}
+
 .prompt-input {
   width: 100%;
   min-height: 150px;
@@ -871,7 +991,11 @@ function handleSubmit() {
   font-size: 16px;
   line-height: 1.8;
   outline: none;
-  transition: border-color var(--transition-base), box-shadow var(--transition-base);
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base),
+    background var(--transition-base),
+    transform var(--transition-base);
 }
 
 .prompt-input::placeholder {
@@ -881,6 +1005,31 @@ function handleSubmit() {
 .prompt-input:focus {
   border-color: var(--color-blue);
   box-shadow: 0 0 0 4px rgba(60, 110, 232, 0.08);
+  background: rgba(255, 255, 255, 0.92);
+  transform: translateY(-1px);
+}
+
+.prompt-signal {
+  position: relative;
+  overflow: hidden;
+  height: 3px;
+  margin-top: 9px;
+  border-radius: 999px;
+  background: rgba(226, 229, 223, 0.72);
+}
+
+.prompt-signal span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--color-blue), rgba(63, 140, 104, 0.86));
+  transition: width 280ms var(--ease-out-soft);
+}
+
+.prompt-card:focus-within {
+  border-color: rgba(60, 110, 232, 0.2);
+  box-shadow: 0 18px 54px rgba(60, 110, 232, 0.09);
 }
 
 .prompt-actions {
@@ -904,25 +1053,118 @@ function handleSubmit() {
   font-weight: 800;
 }
 
+.prompt-actions button {
+  position: relative;
+  overflow: hidden;
+}
+
+.prompt-actions button.active {
+  color: var(--color-blue);
+  border-color: rgba(60, 110, 232, 0.2);
+  background: rgba(60, 110, 232, 0.07);
+}
+
+.prompt-actions button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .cost-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px;
+  border: 1px solid rgba(226, 229, 223, 0.84);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.58);
   color: var(--color-muted);
   font-family: var(--font-ui);
   font-size: 12px;
 }
 
+.cost-note strong {
+  color: var(--color-blue);
+  font-weight: 900;
+}
+
 .generate-bar {
+  position: relative;
+  overflow: hidden;
   padding: 10px;
   display: grid;
   grid-template-columns: 1fr 74px;
   gap: 10px;
   align-items: center;
+  transform-origin: center;
 }
 
 .generate-button {
   min-height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 0 20px;
   font-family: var(--font-ui);
   font-size: 16px;
   font-weight: 850;
+  isolation: isolate;
+}
+
+.generate-copy {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+}
+
+.generate-copy strong {
+  color: inherit;
+  font-size: 16px;
+  line-height: 1.1;
+}
+
+.generate-copy small {
+  color: rgba(255, 255, 255, 0.66);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.generate-button:disabled .generate-copy small {
+  color: var(--color-muted);
+}
+
+.generate-arrow {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  transition: transform var(--transition-base), background var(--transition-base);
+}
+
+.generate-button:hover:not(:disabled) .generate-arrow {
+  background: rgba(255, 255, 255, 0.18);
+  transform: translateX(3px);
+}
+
+.generate-button:not(:disabled)::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  background: linear-gradient(110deg, transparent 0%, rgba(255, 255, 255, 0.18) 45%, transparent 62%);
+  opacity: 0;
+  transform: translateX(-36%);
+  transition: opacity var(--transition-base), transform 620ms var(--ease-out-soft);
+}
+
+.generate-button:hover:not(:disabled)::after {
+  opacity: 1;
+  transform: translateX(36%);
 }
 
 .tune-button {
@@ -932,6 +1174,8 @@ function handleSubmit() {
 }
 
 .task-log {
+  position: relative;
+  overflow: hidden;
   padding: 20px;
 }
 
@@ -959,17 +1203,59 @@ function handleSubmit() {
 
 .empty-log {
   padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
   border: 1px dashed var(--color-line);
   border-radius: var(--radius-md);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.52), rgba(245, 246, 241, 0.36)),
+    rgba(255, 255, 255, 0.38);
+}
+
+.empty-log strong {
+  color: var(--color-ink);
+  font-family: var(--font-ui);
+  font-size: 13px;
+}
+
+.empty-log p {
+  margin: 2px 0 0;
+}
+
+.empty-log-mark {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, rgba(60, 110, 232, 0.12), rgba(63, 140, 104, 0.12)),
+    rgba(255, 255, 255, 0.62);
+  box-shadow: inset 0 0 0 1px rgba(60, 110, 232, 0.12);
+}
+
+.empty-log-mark::before {
+  content: '';
+  display: block;
+  width: 13px;
+  height: 13px;
+  margin: 10px auto;
+  border-radius: 50%;
+  background: var(--color-blue);
+  box-shadow: 0 0 0 7px rgba(60, 110, 232, 0.1);
 }
 
 .log-list {
   display: grid;
   gap: 2px;
+  position: relative;
 }
 
 .log-row {
-  min-height: 45px;
+  position: relative;
+  overflow: hidden;
+  min-height: 49px;
+  padding: 4px 6px;
   display: grid;
   grid-template-columns: auto minmax(220px, 1fr) 88px 112px 78px;
   align-items: center;
@@ -978,6 +1264,34 @@ function handleSubmit() {
   color: var(--color-muted);
   font-family: var(--font-ui);
   font-size: 12px;
+  border-radius: var(--radius-sm);
+  transition:
+    background var(--transition-base),
+    transform var(--transition-base),
+    box-shadow var(--transition-base);
+}
+
+.log-row:hover {
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow: inset 0 0 0 1px rgba(226, 229, 223, 0.76);
+  transform: translateX(3px);
+}
+
+.log-row::before {
+  content: '';
+  position: absolute;
+  inset: 7px auto 7px 0;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--color-blue);
+  opacity: 0;
+  transform: scaleY(0.4);
+  transition: opacity var(--transition-base), transform var(--transition-base);
+}
+
+.log-row:hover::before {
+  opacity: 1;
+  transform: scaleY(1);
 }
 
 .log-row:last-child {
@@ -1025,6 +1339,22 @@ function handleSubmit() {
   white-space: nowrap;
 }
 
+.log-chip {
+  width: fit-content;
+  max-width: 100%;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.58);
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.log-chip.strong {
+  color: var(--color-blue);
+  background: rgba(60, 110, 232, 0.08);
+}
+
 .results-head {
   margin-bottom: 14px;
 }
@@ -1045,10 +1375,38 @@ function handleSubmit() {
 }
 
 .gallery-empty {
+  position: relative;
+  overflow: hidden;
   min-height: 230px;
   display: grid;
-  place-items: center;
+  grid-template-columns: minmax(180px, 0.55fr) minmax(240px, 1fr);
+  align-items: center;
+  gap: 28px;
+  padding: 28px;
   text-align: center;
+  isolation: isolate;
+  animation: gallery-breathe 5.6s ease-in-out infinite;
+}
+
+.gallery-empty::before {
+  content: '';
+  position: absolute;
+  inset: 18px;
+  z-index: -1;
+  border-radius: 26px;
+  background:
+    linear-gradient(90deg, rgba(23, 23, 23, 0.04) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(23, 23, 23, 0.035) 1px, transparent 1px),
+    radial-gradient(circle at 50% 42%, rgba(60, 110, 232, 0.11), transparent 14rem);
+  background-size: 34px 34px, 34px 34px, auto;
+  opacity: 0.72;
+  transform: scale(0.98);
+  transition: transform var(--transition-slow), opacity var(--transition-base);
+}
+
+.gallery-empty:hover::before {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .gallery-empty h1 {
@@ -1060,14 +1418,66 @@ function handleSubmit() {
   margin: 0;
 }
 
+.empty-canvas-preview {
+  position: relative;
+  min-height: 150px;
+  display: grid;
+  place-items: center;
+}
+
+.empty-canvas-preview span {
+  position: absolute;
+  width: 128px;
+  height: 92px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 22px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(245, 246, 241, 0.46)),
+    radial-gradient(circle at 35% 25%, rgba(60, 110, 232, 0.18), transparent 42%),
+    rgba(255, 255, 255, 0.5);
+  box-shadow: 0 18px 42px rgba(23, 23, 23, 0.08);
+  transform-origin: center;
+}
+
+.empty-canvas-preview span:nth-child(1) {
+  transform: translate3d(-42px, 18px, 0) rotate(-11deg);
+}
+
+.empty-canvas-preview span:nth-child(2) {
+  z-index: 1;
+  transform: translate3d(0, -4px, 0) rotate(2deg);
+}
+
+.empty-canvas-preview span:nth-child(3) {
+  transform: translate3d(44px, 22px, 0) rotate(12deg);
+}
+
+.gallery-empty:hover .empty-canvas-preview span:nth-child(1) {
+  transform: translate3d(-52px, 14px, 0) rotate(-14deg);
+}
+
+.gallery-empty:hover .empty-canvas-preview span:nth-child(2) {
+  transform: translate3d(0, -12px, 0) rotate(0deg);
+}
+
+.gallery-empty:hover .empty-canvas-preview span:nth-child(3) {
+  transform: translate3d(54px, 17px, 0) rotate(15deg);
+}
+
+.empty-canvas-preview span {
+  transition: transform 560ms var(--ease-out-soft), box-shadow var(--transition-base);
+}
+
 .gallery-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: 16px;
+  position: relative;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .status-generating {
+  .status-generating,
+  .gallery-empty {
     animation: none;
   }
 
@@ -1082,19 +1492,38 @@ function handleSubmit() {
   .block-head button {
     transition: none;
   }
+
+  .prompt-orbit,
+  .generate-arrow,
+  .empty-canvas-preview span {
+    transition: none;
+  }
 }
 
-.mode-button:hover,
-.choice-card:hover,
-.workflow-card:hover,
-.resolution-button:hover,
-.ratio-pill:hover,
-.upload-card:hover,
-.prompt-actions button:hover,
-.tune-button:hover,
-.block-head button:hover {
+.mode-button:hover:not(:disabled),
+.choice-card:hover:not(:disabled),
+.workflow-card:hover:not(:disabled),
+.resolution-button:hover:not(:disabled),
+.ratio-pill:hover:not(:disabled),
+.upload-card:hover:not(:disabled),
+.prompt-actions button:hover:not(:disabled),
+.tune-button:hover:not(:disabled),
+.block-head button:hover:not(:disabled) {
   transform: translateY(-1px);
   border-color: var(--color-line-strong);
+  box-shadow: 0 12px 28px rgba(23, 23, 23, 0.07);
+}
+
+.mode-button:active:not(:disabled),
+.choice-card:active:not(:disabled),
+.workflow-card:active:not(:disabled),
+.resolution-button:active:not(:disabled),
+.ratio-pill:active:not(:disabled),
+.upload-card:active:not(:disabled),
+.prompt-actions button:active:not(:disabled),
+.tune-button:active:not(:disabled),
+.block-head button:active:not(:disabled) {
+  transform: translateY(0) scale(0.985);
 }
 
 @media (max-width: 1180px) {
@@ -1110,6 +1539,40 @@ function handleSubmit() {
 
   .log-row {
     grid-template-columns: auto minmax(170px, 1fr) 70px 90px 64px;
+  }
+}
+
+@keyframes detail-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes image-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes gallery-breathe {
+  0%, 100% {
+    box-shadow: var(--shadow-sm);
+  }
+
+  50% {
+    box-shadow: 0 22px 60px rgba(60, 110, 232, 0.09);
   }
 }
 
@@ -1150,6 +1613,22 @@ function handleSubmit() {
   .block-head {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .cost-note {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .gallery-empty {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 22px 16px;
+  }
+
+  .empty-canvas-preview {
+    min-height: 112px;
+    transform: scale(0.82);
   }
 
   .log-row {
