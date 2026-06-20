@@ -36,13 +36,7 @@
       </div>
     </section>
 
-    <main
-      ref="authPanelRef"
-      class="auth-panel"
-      @pointerenter="handleGridEnter"
-      @pointermove="handleGridMove"
-      @pointerleave="handleGridLeave"
-    >
+    <main class="auth-panel">
       <div class="auth-card">
         <div class="auth-heading">
           <span class="eyebrow">Start creating</span>
@@ -105,7 +99,6 @@
 <script setup>
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuthGridInteraction } from '../composables/useAuthGridInteraction'
 import { ElMessage } from '../services/toast'
 import { useUserStore } from '../stores/user'
 
@@ -122,7 +115,6 @@ const router = useRouter()
 const userStore = useUserStore()
 
 const loading = ref(false)
-const { authPanelRef, handleGridEnter, handleGridMove, handleGridLeave } = useAuthGridInteraction()
 
 const form = reactive({
   username: '',

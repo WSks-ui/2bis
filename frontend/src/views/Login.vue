@@ -4,7 +4,7 @@
       v-if="showShowcase"
       ref="showcaseRef"
       class="auth-showcase"
-      aria-label="2Bis AI Image Studio"
+      aria-label="2Bis 登录页视觉展示"
       @mouseenter="handleShowcaseEnter"
       @mousemove="handleShowcaseMove"
       @mouseleave="handleShowcaseLeave"
@@ -25,32 +25,13 @@
           loading="eager"
           decoding="async"
         />
-        <div class="art-frame frame-primary">
-          <span class="frame-label">IMAGE / 01</span>
-          <strong>Dreamlike light study</strong>
-        </div>
-        <div class="art-frame frame-secondary">
-          <span class="frame-label">UPSCALE</span>
-          <strong>3840 x 2160</strong>
-        </div>
         <div class="art-grain"></div>
       </div>
 
       <router-link to="/" class="showcase-logo" data-cursor="interactive">2Bis</router-link>
-      <div class="showcase-copy">
-        <span class="eyebrow">AI Image Studio</span>
-        <h1>想象，成为作品。</h1>
-        <p>从提示词到高清成片，2Bis 为创作者保留完整历史、额度与专业工作流。</p>
-      </div>
     </section>
 
-    <main
-      ref="authPanelRef"
-      class="auth-panel"
-      @pointerenter="handleGridEnter"
-      @pointermove="handleGridMove"
-      @pointerleave="handleGridLeave"
-    >
+    <main class="auth-panel">
       <div class="auth-card">
         <div class="auth-heading">
           <span class="eyebrow">Welcome back</span>
@@ -134,7 +115,6 @@
 <script setup>
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuthGridInteraction } from '../composables/useAuthGridInteraction'
 import { useShowcaseParallax } from '../composables/useShowcaseParallax'
 import { ElMessage } from '../services/toast'
 import { useUserStore } from '../stores/user'
@@ -153,7 +133,6 @@ const userStore = useUserStore()
 
 const loading = ref(false)
 const rememberMe = ref(true)
-const { authPanelRef, handleGridEnter, handleGridMove, handleGridLeave } = useAuthGridInteraction()
 const { showcaseRef, handleShowcaseEnter, handleShowcaseMove, handleShowcaseLeave } = useShowcaseParallax()
 
 const form = reactive({
@@ -228,12 +207,6 @@ function showUnavailable(name) {
   --showcase-poster-x: 0px;
   --showcase-poster-y: 0px;
   --showcase-poster-rotate: 2.5deg;
-  --showcase-frame-primary-x: 0px;
-  --showcase-frame-primary-y: 0px;
-  --showcase-frame-secondary-x: 0px;
-  --showcase-frame-secondary-y: 0px;
-  --showcase-copy-x: 0px;
-  --showcase-copy-y: 0px;
   --showcase-logo-x: 0px;
   --showcase-logo-y: 0px;
   --showcase-glow-x: 50%;
@@ -282,12 +255,6 @@ function showUnavailable(name) {
     --showcase-poster-x: 10px;
     --showcase-poster-y: -8px;
     --showcase-poster-rotate: 3.2deg;
-    --showcase-frame-primary-x: -7px;
-    --showcase-frame-primary-y: 5px;
-    --showcase-frame-secondary-x: 6px;
-    --showcase-frame-secondary-y: -4px;
-    --showcase-copy-x: 4px;
-    --showcase-copy-y: -3px;
     --showcase-logo-x: 3px;
     --showcase-logo-y: -2px;
     --showcase-glow-x: 58%;
@@ -379,49 +346,6 @@ function showUnavailable(name) {
   filter: saturate(1.06) contrast(1.04);
 }
 
-.art-frame {
-  position: absolute;
-  z-index: 5;
-  width: min(270px, 28vw);
-  padding: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  border-radius: 24px;
-  background: rgba(8, 13, 20, 0.38);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.26);
-  backdrop-filter: blur(24px);
-  font-family: var(--font-ui);
-}
-
-.frame-primary {
-  right: clamp(34px, 5.8vw, 90px);
-  bottom: 13%;
-  transform: translate3d(var(--showcase-frame-primary-x), var(--showcase-frame-primary-y), 0);
-  will-change: transform;
-}
-
-.frame-secondary {
-  left: clamp(34px, 6vw, 92px);
-  top: 25%;
-  transform: translate3d(var(--showcase-frame-secondary-x), var(--showcase-frame-secondary-y), 0);
-  will-change: transform;
-}
-
-.frame-label {
-  display: block;
-  margin-bottom: 10px;
-  color: rgba(255, 255, 255, 0.66);
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 0.12em;
-}
-
-.art-frame strong {
-  display: block;
-  max-width: 180px;
-  font-size: 20px;
-  line-height: 1.15;
-}
-
 .art-grain {
   position: absolute;
   inset: 0;
@@ -454,15 +378,6 @@ function showUnavailable(name) {
   color: #fff;
 }
 
-.showcase-copy {
-  position: relative;
-  z-index: 6;
-  max-width: 560px;
-  padding-bottom: clamp(12px, 4vw, 48px);
-  transform: translate3d(var(--showcase-copy-x), var(--showcase-copy-y), 0);
-  will-change: transform;
-}
-
 .eyebrow {
   color: rgba(255, 255, 255, 0.72);
   font-family: var(--font-ui);
@@ -470,23 +385,6 @@ function showUnavailable(name) {
   font-weight: 900;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-}
-
-.showcase-copy h1 {
-  margin: 14px 0 18px;
-  color: #fff;
-  font-size: clamp(42px, 5vw, 68px);
-  line-height: 0.95;
-  letter-spacing: -0.08em;
-  white-space: nowrap;
-}
-
-.showcase-copy p {
-  max-width: 470px;
-  color: rgba(255, 255, 255, 0.72);
-  font-family: var(--font-ui);
-  font-size: 16px;
-  line-height: 1.8;
 }
 
 .auth-panel {
@@ -939,8 +837,7 @@ function showUnavailable(name) {
     object-position: center 58%;
   }
 
-  .showcase-poster,
-  .art-frame {
+  .showcase-poster {
     display: none;
   }
 
@@ -950,10 +847,6 @@ function showUnavailable(name) {
 
   .auth-page-register .auth-panel {
     grid-column: 1;
-  }
-
-  .showcase-copy {
-    padding-top: 120px;
   }
 }
 
@@ -966,11 +859,6 @@ function showUnavailable(name) {
   .showcase-image {
     animation: none;
     transform: scale(1.02);
-  }
-
-  .showcase-copy h1 {
-    font-size: 38px;
-    white-space: normal;
   }
 
   .auth-panel {
@@ -995,10 +883,7 @@ function showUnavailable(name) {
 @media (prefers-reduced-motion: reduce) {
   .showcase-image,
   .showcase-poster,
-  .frame-primary,
-  .frame-secondary,
-  .showcase-logo,
-  .showcase-copy {
+  .showcase-logo {
     transform: none;
     animation: none;
   }
