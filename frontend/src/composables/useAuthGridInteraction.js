@@ -6,9 +6,11 @@ const IDLE_EPSILON = 0.018
 
 export function useAuthGridInteraction() {
   const authPanelRef = ref(null)
+  const isGridActive = ref(false)
   let frameId = 0
   let isActive = false
   let lastTime = 0
+  let interactionTarget = null
 
   const pointer = {
     targetX: 50,
@@ -47,8 +49,15 @@ export function useAuthGridInteraction() {
     panel.style.setProperty('--grid-softness', `${132 + intensity * 86}px`)
   }
 
+  function resolvePanel(event) {
+    const closestTarget = event?.target?.closest?.('.auth-switch-host, .auth-panel')
+    const panel = authPanelRef.value || event?.currentTarget || closestTarget || interactionTarget
+    interactionTarget = panel || null
+    return panel
+  }
+
   function tick(time) {
-    const panel = authPanelRef.value
+    const panel = resolvePanel()
     if (!panel) {
       frameId = 0
       return
@@ -57,7 +66,7 @@ export function useAuthGridInteraction() {
     const delta = lastTime ? Math.min(32, time - lastTime) / 16.67 : 1
     lastTime = time
 
-    // 使用弹簧积分让视觉中心追随目标点，避免网格高光区域跟鼠标直来直去。
+    // 保持双轴弹性速度独立更新，让背景网格同时具备拖拽形变和尾迹。
     pointer.velocityX = (pointer.velocityX + (pointer.targetX - pointer.currentX) * SPRING * delta) * FRICTION
     pointer.velocityY = (pointer.velocityY + (pointer.targetY - pointer.currentY) * SPRING * delta) * FRICTION
     pointer.currentX += pointer.velocityX * delta
@@ -74,6 +83,7 @@ export function useAuthGridInteraction() {
 
     if (isSettled) {
       panel.classList.remove('is-grid-active')
+      isGridActive.value = false
       frameId = 0
       lastTime = 0
       return
@@ -88,8 +98,10 @@ export function useAuthGridInteraction() {
     }
   }
 
-  function syncTargetFromEvent(event) {
-    const rect = event.currentTarget.getBoundingClientRect()
+  function syncTargetFromEvent(event, panel = resolvePanel(event)) {
+    if (!panel) return
+
+    const rect = panel.getBoundingClientRect()
     pointer.targetX = Math.min(100, Math.max(0, ((event.clientX - rect.left) / rect.width) * 100))
     pointer.targetY = Math.min(100, Math.max(0, ((event.clientY - rect.top) / rect.height) * 100))
   }
@@ -97,26 +109,35 @@ export function useAuthGridInteraction() {
   function handleGridEnter(event) {
     if (!shouldTrack(event)) return
 
+    const panel = resolvePanel(event)
     isActive = true
-    event.currentTarget.classList.add('is-grid-active')
-    syncTargetFromEvent(event)
+    isGridActive.value = true
+    panel?.classList.add('is-grid-active')
+    syncTargetFromEvent(event, panel)
+    if (panel) setPanelVars(panel, 0)
     ensureAnimation()
   }
 
   function handleGridMove(event) {
     if (!shouldTrack(event)) return
 
+    const panel = resolvePanel(event)
     isActive = true
-    event.currentTarget.classList.add('is-grid-active')
-    syncTargetFromEvent(event)
+    isGridActive.value = true
+    panel?.classList.add('is-grid-active')
+    syncTargetFromEvent(event, panel)
     ensureAnimation()
   }
 
   function handleGridLeave(event) {
     isActive = false
-    const rect = event.currentTarget.getBoundingClientRect()
+    const panel = resolvePanel(event)
+    if (!panel) return
+
+    const rect = panel.getBoundingClientRect()
     pointer.targetX = Math.min(100, Math.max(0, ((event.clientX - rect.left) / rect.width) * 100))
     pointer.targetY = Math.min(100, Math.max(0, ((event.clientY - rect.top) / rect.height) * 100))
+    if (panel) setPanelVars(panel, 0)
     ensureAnimation()
   }
 
@@ -130,6 +151,7 @@ export function useAuthGridInteraction() {
     authPanelRef,
     handleGridEnter,
     handleGridMove,
-    handleGridLeave
+    handleGridLeave,
+    isGridActive
   }
 }
