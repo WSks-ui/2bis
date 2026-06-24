@@ -46,7 +46,7 @@
 
         <nav class="auth-tabs auth-tabs-register" aria-label="登录与注册切换">
           <router-link to="/login" data-cursor="interactive">登录</router-link>
-          <span class="active">注册</span>
+          <span class="active" aria-current="page">注册</span>
         </nav>
 
         <form class="auth-form" @submit.prevent="handleRegister">
@@ -57,8 +57,12 @@
               class="auth-input"
               placeholder="请输入用户名"
               autocomplete="username"
+              :aria-invalid="String(Boolean(errors.username))"
+              aria-describedby="register-username-error"
             />
-            <span v-if="errors.username" class="input-error">{{ errors.username }}</span>
+            <span id="register-username-error" class="input-error" :class="{ 'is-visible': errors.username }">
+              {{ errors.username || ' ' }}
+            </span>
           </label>
 
           <label class="field-line">
@@ -69,8 +73,12 @@
               class="auth-input"
               placeholder="至少 6 位密码"
               autocomplete="new-password"
+              :aria-invalid="String(Boolean(errors.password))"
+              aria-describedby="register-password-error"
             />
-            <span v-if="errors.password" class="input-error">{{ errors.password }}</span>
+            <span id="register-password-error" class="input-error" :class="{ 'is-visible': errors.password }">
+              {{ errors.password || ' ' }}
+            </span>
           </label>
 
           <label class="field-line">
@@ -81,8 +89,16 @@
               class="auth-input"
               placeholder="请再次输入密码"
               autocomplete="new-password"
+              :aria-invalid="String(Boolean(errors.confirmPassword))"
+              aria-describedby="register-confirm-password-error"
             />
-            <span v-if="errors.confirmPassword" class="input-error">{{ errors.confirmPassword }}</span>
+            <span
+              id="register-confirm-password-error"
+              class="input-error"
+              :class="{ 'is-visible': errors.confirmPassword }"
+            >
+              {{ errors.confirmPassword || ' ' }}
+            </span>
           </label>
 
           <button type="submit" class="btn-black btn-auth auth-primary-action" :disabled="loading" data-cursor="interactive">

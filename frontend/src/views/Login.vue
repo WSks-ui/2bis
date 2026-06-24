@@ -40,7 +40,7 @@
         </div>
 
         <nav class="auth-tabs auth-tabs-login" aria-label="登录与注册切换">
-          <span class="active">登录</span>
+          <span class="active" aria-current="page">登录</span>
           <router-link to="/register" data-cursor="interactive">注册</router-link>
         </nav>
 
@@ -52,8 +52,12 @@
               class="auth-input"
               placeholder="请输入用户名"
               autocomplete="username"
+              :aria-invalid="String(Boolean(errors.username))"
+              aria-describedby="login-username-error"
             />
-            <span v-if="errors.username" class="input-error">{{ errors.username }}</span>
+            <span id="login-username-error" class="input-error" :class="{ 'is-visible': errors.username }">
+              {{ errors.username || ' ' }}
+            </span>
           </label>
 
           <label class="field-line">
@@ -64,8 +68,12 @@
               class="auth-input"
               placeholder="请输入密码"
               autocomplete="current-password"
+              :aria-invalid="String(Boolean(errors.password))"
+              aria-describedby="login-password-error"
             />
-            <span v-if="errors.password" class="input-error">{{ errors.password }}</span>
+            <span id="login-password-error" class="input-error" :class="{ 'is-visible': errors.password }">
+              {{ errors.password || ' ' }}
+            </span>
           </label>
 
           <div class="form-row">
