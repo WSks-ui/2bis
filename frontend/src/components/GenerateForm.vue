@@ -52,7 +52,7 @@
             @click="size = item.value"
           >
             <strong>{{ item.label }}</strong>
-            <span>{{ formatImageSize(item.value) }} · {{ imageMegapixels(item.value) }}</span>
+            <span>{{ formatImageSizeTier(item.value) }}</span>
           </button>
         </div>
       </div>
@@ -72,7 +72,7 @@
 import { computed, ref } from 'vue'
 import { ElMessage } from '../services/toast'
 import api from '../api'
-import { IMAGE_SIZE_GROUPS, formatImageSize, imageMegapixels } from '../constants/imageSizes'
+import { IMAGE_SIZE_GROUPS, formatImageSizeTier } from '../constants/imageSizes'
 import { usePointsStore } from '../stores/points'
 
 const pointsStore = usePointsStore()

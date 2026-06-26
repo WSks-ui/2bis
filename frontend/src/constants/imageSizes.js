@@ -82,6 +82,16 @@ export function formatImageSize(value) {
   return value.replace('x', '×')
 }
 
+export function formatImageSizeTier(value) {
+  const [width, height] = value.split('x').map(Number)
+  const longSide = Math.max(width || 0, height || 0)
+  const shortSide = Math.min(width || 0, height || 0)
+  // 只隐藏具体像素，不改变实际提交值；按常见图像档位把 2048 级别归为 2k。
+  if (longSide >= 3000) return '4k'
+  if (longSide >= 2048 || shortSide >= 1536) return '2k'
+  return '1k'
+}
+
 export function imageMegapixels(value) {
   const [width, height] = value.split('x').map(Number)
   if (!width || !height) return ''

@@ -91,7 +91,7 @@
               @click="size = item.value"
             >
               <span>{{ item.label }}</span>
-              <strong>{{ formatImageSize(item.value) }}</strong>
+              <strong>{{ formatImageSizeTier(item.value) }}</strong>
             </button>
           </div>
         </section>
@@ -246,7 +246,7 @@
 import { computed, nextTick, onActivated, onMounted, ref } from 'vue'
 import { ElMessage } from '../services/toast'
 import TaskCard from '../components/TaskCard.vue'
-import { IMAGE_SIZE_GROUPS, formatImageSize } from '../constants/imageSizes'
+import { IMAGE_SIZE_GROUPS, formatImageSize, formatImageSizeTier } from '../constants/imageSizes'
 import { useTasksStore } from '../stores/tasks'
 import { fetchPlansConfig, readCachedPlans } from '../services/plansCache'
 
@@ -346,9 +346,9 @@ const qualitySource = computed(() => {
 })
 const workflowSummary = computed(() => {
   const workflowName = selectedWorkflow.value?.name || '标准生成'
-  return `${workflowName} · ${qualityLabel(quality.value)} · ${formatImageSize(size.value)}`
+  return `${workflowName} · ${qualityLabel(quality.value)} · ${formatImageSizeTier(size.value)}`
 })
-const submitHint = computed(() => `${qualitySource.value} · ${formatImageSize(size.value)}`)
+const submitHint = computed(() => `${qualitySource.value} · ${formatImageSizeTier(size.value)}`)
 const placeholder = computed(() => {
   if (mode.value === 'text2img') return '描述画面、主体、风格、光线与构图。例：清晨湖边的极简建筑，柔和自然光，画面安静。'
   if (mode.value === 'ref2img') return '结合参考图说明想保留什么、改变什么。'
