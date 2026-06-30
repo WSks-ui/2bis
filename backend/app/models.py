@@ -60,6 +60,8 @@ class GenerationTask(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True, index=True)
+    canvas_item_id = Column(Integer, nullable=True, index=True)
     mode = Column(String(20), nullable=False, default="text2img")
     prompt = Column(Text, nullable=False)
     quality = Column(String(20), nullable=False, default="medium")
@@ -75,6 +77,9 @@ class GenerationTask(Base):
     source_image_mime_type = Column(String(50), nullable=True)
     source_image_paths = Column(Text, nullable=True)
     source_image_mime_types = Column(Text, nullable=True)
+    source_mask_path = Column(Text, nullable=True)
+    source_mask_mime_type = Column(String(50), nullable=True)
+    studio_source_item_ids_json = Column(Text, nullable=True)
     upstream_model = Column(String(80), nullable=True)
     upstream_endpoint = Column(String(120), nullable=True)
     upstream_request_quality = Column(String(30), nullable=True)
@@ -137,6 +142,104 @@ class GenerateHistory(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     user = relationship("User", back_populates="histories")
+
+
+class Workspace(Base):
+    __tablename__ = "workspaces"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(120), nullable=False)
+    description = Column(Text, nullable=True)
+    cover_asset_id = Column(Integer, nullable=True)
+    settings_json = Column(Text, nullable=False, default="{}")
+    canvas_revision = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    last_opened_at = Column(DateTime, nullable=True)
+    archived_at = Column(DateTime, nullable=True, index=True)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+
+    user = relationship("User")
+    assets = relationship("WorkspaceAsset", back_populates="workspace", lazy="dynamic")
+    canvas_items = relationship("CanvasItem", back_populates="workspace", lazy="dynamic")
+    canvas_relations = relationship("CanvasRelation", back_populates="workspace", lazy="dynamic")
+
+
+class WorkspaceAsset(Base):
+    __tablename__ = "workspace_assets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    asset_type = Column(String(30), nullable=False, default="image", index=True)
+    source_type = Column(String(40), nullable=False, default="upload", index=True)
+    title = Column(String(160), nullable=True)
+    url = Column(Text, nullable=True)
+    thumbnail_url = Column(Text, nullable=True)
+    mime_type = Column(String(80), nullable=True)
+    width = Column(Integer, nullable=True)
+    height = Column(Integer, nullable=True)
+    text_content = Column(Text, nullable=True)
+    task_id = Column(Integer, ForeignKey("generation_tasks.id"), nullable=True, index=True)
+    history_id = Column(Integer, ForeignKey("generate_histories.id"), nullable=True, index=True)
+    parent_asset_id = Column(Integer, ForeignKey("workspace_assets.id"), nullable=True)
+    metadata_json = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+
+    workspace = relationship("Workspace", back_populates="assets")
+    user = relationship("User")
+
+
+class CanvasItem(Base):
+    __tablename__ = "canvas_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    asset_id = Column(Integer, ForeignKey("workspace_assets.id"), nullable=True, index=True)
+    task_id = Column(Integer, ForeignKey("generation_tasks.id"), nullable=True, index=True)
+    item_type = Column(String(30), nullable=False, index=True)
+    x = Column(Float, nullable=False, default=0)
+    y = Column(Float, nullable=False, default=0)
+    width = Column(Float, nullable=False, default=240)
+    height = Column(Float, nullable=False, default=180)
+    rotation = Column(Float, nullable=False, default=0)
+    z_index = Column(Integer, nullable=False, default=0)
+    locked = Column(Boolean, nullable=False, default=False)
+    title = Column(String(160), nullable=True)
+    data_json = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+
+    workspace = relationship("Workspace", back_populates="canvas_items")
+    user = relationship("User")
+    asset = relationship("WorkspaceAsset")
+
+
+class CanvasRelation(Base):
+    __tablename__ = "canvas_relations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    source_item_id = Column(Integer, ForeignKey("canvas_items.id"), nullable=False, index=True)
+    target_item_id = Column(Integer, ForeignKey("canvas_items.id"), nullable=False, index=True)
+    relation_type = Column(String(40), nullable=False, index=True)
+    label = Column(String(120), nullable=True)
+    strength = Column(Float, nullable=False, default=1)
+    data_json = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+
+    workspace = relationship("Workspace", back_populates="canvas_relations")
+    user = relationship("User")
+    source_item = relationship("CanvasItem", foreign_keys=[source_item_id])
+    target_item = relationship("CanvasItem", foreign_keys=[target_item_id])
 
 
 class OrderStatus(str, enum.Enum):

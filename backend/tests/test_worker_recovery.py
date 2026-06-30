@@ -76,6 +76,20 @@ class WorkerRecoveryTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(images, [(b"legacy.jpg", "image-1.jpg", "image/jpeg")])
 
+    async def test_read_task_source_mask_uses_saved_mask(self) -> None:
+        task = GenerationTask(
+            source_mask_path="mask.png",
+            source_mask_mime_type="image/png",
+        )
+
+        async def fake_read(path: str) -> bytes:
+            return path.encode("utf-8")
+
+        with patch.object(worker, "read_upload_file", side_effect=fake_read):
+            mask = await worker.read_task_source_mask(task)
+
+        self.assertEqual(mask, (b"mask.png", "mask.png", "image/png"))
+
     async def test_stale_processing_task_is_refunded_without_requeue(self) -> None:
         async with self.session_factory() as db:
             user = User(
@@ -186,6 +200,66 @@ class WorkerRecoveryTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(history.image_url, remote_url)
         self.assertEqual(history.upstream_body_seconds, 20.5)
         self.assertIsNotNone(history.upstream_save_seconds)
+
+    async def test_masked_edit_task_calls_ai_client_with_mask(self) -> None:
+        ai_result = AIImageResult(
+            data_url="data:image/png;base64,abc",
+            image_url=None,
+            model="gpt-image-2",
+            endpoint="/v1/images/edits",
+            request_quality="low",
+            request_size="1024x1024",
+            request_response_format=None,
+            response_request_id="req_mask",
+            response_content_type="application/json",
+            elapsed_seconds=3.0,
+            payload_length=25,
+        )
+
+        async with self.session_factory() as db:
+            user = User(username="masked-edit-user", hashed_password="x")
+            db.add(user)
+            await db.flush()
+            task = GenerationTask(
+                user_id=user.id,
+                prompt="edit selected area",
+                mode="edit",
+                quality="low",
+                size="1024x1024",
+                points_cost=1,
+                balance_source="free_points",
+                source_image_paths=json.dumps(["source.png"]),
+                source_image_mime_types=json.dumps(["image/png"]),
+                source_mask_path="mask.png",
+                source_mask_mime_type="image/png",
+            )
+            db.add(task)
+            await db.commit()
+            task_id = task.id
+
+        async def fake_read(path: str) -> bytes:
+            return path.encode("utf-8")
+
+        mask_edit = AsyncMock(return_value=ai_result)
+        with (
+            patch.object(worker, "read_upload_file", side_effect=fake_read),
+            patch.object(worker.AIClient, "edit_with_mask_metadata", new=mask_edit),
+            patch.object(worker.AIClient, "edit_multiple_with_metadata", new=AsyncMock()) as multi_edit,
+            patch.object(worker, "save_data_url", new=AsyncMock(return_value="/static/images/1/masked.png")),
+        ):
+            await worker.process_task(task_id)
+
+        mask_edit.assert_awaited_once()
+        image_arg, mask_arg = mask_edit.await_args.args[:2]
+        self.assertEqual(image_arg, (b"source.png", "image-1.png", "image/png"))
+        self.assertEqual(mask_arg, (b"mask.png", "mask.png", "image/png"))
+        multi_edit.assert_not_awaited()
+
+        async with self.session_factory() as db:
+            task = await db.get(GenerationTask, task_id)
+
+        self.assertEqual(task.status, GenerationTaskStatus.SUCCESS)
+        self.assertEqual(task.image_url, "/static/images/1/masked.png")
 
     async def test_remote_image_mirror_updates_task_and_history_to_local_url(self) -> None:
         remote_url = "https://image.example/generated.png"

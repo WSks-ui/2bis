@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import IMAGE_DIR
 from app.database import init_db
-from app.routers import admin, auth, points, membership, generate, payment, history, edits
+from app.routers import admin, auth, points, membership, generate, payment, history, edits, studio
 from app.services.ai_client import close_client
 from app.services.task_queue import close_redis
 
@@ -51,4 +51,5 @@ app.include_router(generate.router, prefix="/api")
 app.include_router(payment.router, prefix="/api")
 app.include_router(history.router, prefix="/api")
 app.include_router(edits.router, prefix="/api")
+app.include_router(studio.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")

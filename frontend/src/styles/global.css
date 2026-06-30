@@ -352,12 +352,19 @@ button {
 .motion-spotlight-host {
   position: relative;
   overflow: hidden;
+  isolation: isolate;
 }
 
 .motion-spotlight-glow {
   position: absolute;
+  display: block;
+  flex: 0 0 auto;
   z-index: 0;
   pointer-events: none;
+  max-width: none;
+  max-height: none;
+  line-height: 0;
+  contain: layout paint style;
   border-radius: 50%;
   background:
     radial-gradient(circle, rgba(255, 255, 255, 0.7) 0%, rgba(60, 110, 232, 0.12) 36%, transparent 68%);

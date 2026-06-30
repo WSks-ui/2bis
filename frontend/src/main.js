@@ -2,7 +2,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import './styles/global.css'
 import App from './App.vue'
-import router, { preloadAuthRoutes } from './router'
+import router, { preloadAuthRoutes, preloadStudioRoute } from './router'
 import { installMotion } from './services/motion'
 import { preloadAuthImages } from './utils/authAssets'
 
@@ -14,3 +14,4 @@ app.mount('#app')
 
 preloadAuthImages()
 preloadAuthRoutes()
+preloadStudioRoute()

@@ -3,7 +3,7 @@
     class="points-display"
     :class="[`points-display--${variant}`, { 'points-free': free, 'points-display--empty': isEmpty }]"
     :aria-label="ariaLabel"
-    data-spotlight
+    :data-spotlight="spotlight"
   >
     <span class="coin-icon" aria-hidden="true">
       <span class="coin-core">{{ iconText }}</span>
@@ -34,6 +34,10 @@ const props = defineProps({
   free: {
     type: Boolean,
     default: false
+  },
+  spotlight: {
+    type: String,
+    default: ''
   }
 })
 

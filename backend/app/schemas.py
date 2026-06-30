@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 
 class UserRegister(BaseModel):
@@ -149,6 +149,183 @@ class HistoryPageResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+class WorkspaceCreate(BaseModel):
+    name: str = Field(default="未命名工作区", min_length=1, max_length=120)
+    description: Optional[str] = Field(default=None, max_length=2000)
+
+
+class WorkspaceUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    description: Optional[str] = Field(default=None, max_length=2000)
+    cover_asset_id: Optional[int] = None
+
+
+class WorkspaceResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    cover_asset_id: Optional[int] = None
+    canvas_revision: int
+    created_at: datetime
+    updated_at: datetime
+    last_opened_at: Optional[datetime] = None
+    archived_at: Optional[datetime] = None
+
+
+class StudioAssetResponse(BaseModel):
+    id: int
+    workspace_id: int
+    asset_type: str
+    source_type: str
+    title: Optional[str] = None
+    url: Optional[str] = None
+    thumbnail_url: Optional[str] = None
+    mime_type: Optional[str] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    text_content: Optional[str] = None
+    task_id: Optional[int] = None
+    history_id: Optional[int] = None
+    parent_asset_id: Optional[int] = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+
+
+class CanvasItemBase(BaseModel):
+    asset_id: Optional[int] = None
+    task_id: Optional[int] = None
+    item_type: str = Field(..., min_length=1, max_length=30)
+    x: float = 0
+    y: float = 0
+    width: float = 240
+    height: float = 180
+    rotation: float = 0
+    z_index: int = 0
+    locked: bool = False
+    title: Optional[str] = Field(default=None, max_length=160)
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+class CanvasItemCreate(CanvasItemBase):
+    pass
+
+
+class CanvasItemUpdate(BaseModel):
+    x: Optional[float] = None
+    y: Optional[float] = None
+    width: Optional[float] = None
+    height: Optional[float] = None
+    rotation: Optional[float] = None
+    z_index: Optional[int] = None
+    locked: Optional[bool] = None
+    title: Optional[str] = Field(default=None, max_length=160)
+    data: Optional[dict[str, Any]] = None
+
+
+class CanvasItemBulkPatch(CanvasItemUpdate):
+    id: int
+
+
+class CanvasBulkUpdateRequest(BaseModel):
+    client_revision: int
+    items: list[CanvasItemBulkPatch]
+
+
+class CanvasItemResponse(CanvasItemBase):
+    id: int
+    workspace_id: int
+    created_at: datetime
+    updated_at: datetime
+    asset: Optional[StudioAssetResponse] = None
+
+
+class CanvasBulkUpdateResponse(BaseModel):
+    revision: int
+    items: list[CanvasItemResponse]
+
+
+class CanvasRelationCreate(BaseModel):
+    source_item_id: int
+    target_item_id: int
+    relation_type: str = Field(..., min_length=1, max_length=40)
+    label: Optional[str] = Field(default=None, max_length=120)
+    strength: float = 1
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+class CanvasRelationUpdate(BaseModel):
+    relation_type: Optional[str] = Field(default=None, min_length=1, max_length=40)
+    label: Optional[str] = Field(default=None, max_length=120)
+    strength: Optional[float] = None
+    data: Optional[dict[str, Any]] = None
+
+
+class CanvasRelationResponse(BaseModel):
+    id: int
+    workspace_id: int
+    source_item_id: int
+    target_item_id: int
+    relation_type: str
+    label: Optional[str] = None
+    strength: float
+    data: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+
+
+class CanvasResponse(BaseModel):
+    workspace: WorkspaceResponse
+    revision: int
+    items: list[CanvasItemResponse]
+    relations: list[CanvasRelationResponse]
+    assets: list[StudioAssetResponse]
+
+
+class StudioAssetUpdate(BaseModel):
+    title: Optional[str] = Field(default=None, max_length=160)
+    metadata: Optional[dict[str, Any]] = None
+
+
+class StudioAssetUploadResponse(BaseModel):
+    asset: StudioAssetResponse
+    item: Optional[CanvasItemResponse] = None
+
+
+class StudioGenerateRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=2000)
+    mode: str = Field(default="text2img", max_length=20)
+    source_item_ids: list[int] = Field(default_factory=list)
+    quality: str = Field(default="low")
+    size: str = Field(default="1024x1024")
+    workflow_type: str = Field(default="standard", max_length=40)
+    workflow_preset: Optional[str] = Field(default=None, max_length=80)
+    x: float = 0
+    y: float = 0
+
+
+class StudioGenerateResponse(BaseModel):
+    task: GenerationTaskResponse
+    item: CanvasItemResponse
+    revision: int
+
+
+class StudioTaskStatusResponse(BaseModel):
+    task: GenerationTaskResponse
+    task_item: Optional[CanvasItemResponse] = None
+    asset: Optional[StudioAssetResponse] = None
+    result_item: Optional[CanvasItemResponse] = None
+    relations: list[CanvasRelationResponse] = Field(default_factory=list)
+    revision: int
+
+
+class HistoryImportRequest(BaseModel):
+    history_id: int
+    x: float = 0
+    y: float = 0
+    create_item: bool = True
 
 
 class OrderCreate(BaseModel):

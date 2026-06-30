@@ -21,6 +21,7 @@ dist/
 # IDE
 .idea/
 .workbuddy/
+.codex/
 
 # OS
 Thumbs.db
