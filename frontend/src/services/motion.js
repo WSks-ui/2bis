@@ -128,7 +128,12 @@ function handleGlobalSpotlight(event) {
   if (prefersReducedMotion()) return
 
   const target = event.target?.closest?.(SPOTLIGHT_SELECTOR)
-  if (!target || target.dataset.spotlight === 'off' || target.matches(FORM_CONTROL_SELECTOR)) {
+  if (
+    !target ||
+    target.dataset.spotlight === 'off' ||
+    target.closest('[data-spotlight="off"]') ||
+    target.matches(FORM_CONTROL_SELECTOR)
+  ) {
     clearSpotlight()
     return
   }

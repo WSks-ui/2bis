@@ -7,9 +7,10 @@
       </router-link>
 
       <nav class="nav-links" aria-label="主导航">
-        <router-link to="/" class="nav-link" active-class="nav-link--active" data-spotlight>创作台</router-link>
-        <router-link to="/history" class="nav-link" active-class="nav-link--active" data-spotlight>历史记录</router-link>
-        <router-link to="/plans" class="nav-link" active-class="nav-link--active" data-spotlight>计划订阅</router-link>
+        <router-link to="/" class="nav-link" active-class="nav-link--active" data-spotlight="off">创作台</router-link>
+        <router-link to="/studio" class="nav-link" active-class="nav-link--active" data-spotlight="off">Studio</router-link>
+        <router-link to="/history" class="nav-link" active-class="nav-link--active" data-spotlight="off">历史记录</router-link>
+        <router-link to="/plans" class="nav-link" active-class="nav-link--active" data-spotlight="off">计划订阅</router-link>
       </nav>
 
       <div class="navbar-actions">
@@ -19,15 +20,15 @@
           :disabled="!checkinAvailable || checkinLoading"
           :aria-busy="checkinLoading"
           @click="doCheckin"
-          data-spotlight
+          data-spotlight="off"
         >
           <span class="checkin-dot" aria-hidden="true"></span>
           <span>{{ checkinLabel }}</span>
         </button>
 
         <div class="balance-pair" aria-label="当前可用额度">
-          <PointsDisplay :balance="pointsStore.freePoints" label="体验积分" variant="experience" />
-          <PointsDisplay :balance="pointsStore.monthlyQuotaRemaining" label="订阅额度" variant="quota" />
+          <PointsDisplay :balance="pointsStore.freePoints" label="体验积分" variant="experience" spotlight="off" />
+          <PointsDisplay :balance="pointsStore.monthlyQuotaRemaining" label="订阅额度" variant="quota" spotlight="off" />
         </div>
 
         <span v-if="pointsStore.planLabel" class="plan-badge">{{ pointsStore.planLabel }}</span>
@@ -39,7 +40,7 @@
             aria-haspopup="menu"
             :aria-expanded="userMenuOpen"
             @click.stop="toggleUserMenu"
-            data-spotlight
+            data-spotlight="off"
           >
             <span class="avatar">{{ avatarText }}</span>
             <span class="username-text">{{ userStore.username || 'User' }}</span>
@@ -55,6 +56,10 @@
             <router-link to="/plans" role="menuitem" @click="userMenuOpen = false">
               <span class="menu-icon">P</span>
               管理订阅
+            </router-link>
+            <router-link to="/studio" role="menuitem" @click="userMenuOpen = false">
+              <span class="menu-icon">S</span>
+              Studio 工作区
             </router-link>
             <router-link to="/history" role="menuitem" @click="userMenuOpen = false">
               <span class="menu-icon">H</span>
@@ -76,11 +81,9 @@
 
     <nav class="mobile-tabs" aria-label="移动导航">
       <router-link to="/" class="mobile-tab" active-class="mobile-tab--active">创作</router-link>
+      <router-link to="/studio" class="mobile-tab" active-class="mobile-tab--active">Studio</router-link>
       <router-link to="/history" class="mobile-tab" active-class="mobile-tab--active">历史</router-link>
       <router-link to="/plans" class="mobile-tab" active-class="mobile-tab--active">订阅</router-link>
-      <button class="mobile-tab mobile-tab-button" :disabled="!checkinAvailable || checkinLoading" @click="doCheckin">
-        {{ checkinLoading ? '...' : checkinAvailable ? '签到' : '已签' }}
-      </button>
     </nav>
 
     <Transition name="modal-pop">
@@ -250,6 +253,7 @@ function logout() {
 
 .nav-links {
   display: flex;
+  align-items: center;
   justify-content: center;
   align-self: stretch;
   gap: 34px;
@@ -259,13 +263,16 @@ function logout() {
   position: relative;
   display: inline-flex;
   align-items: center;
-  min-height: 34px;
-  padding: 0 14px;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 7px 16px;
   border-radius: 999px;
   color: var(--color-muted);
   font-family: var(--font-ui);
   font-size: 14px;
   font-weight: 700;
+  line-height: 1.15;
   text-decoration: none;
   transition:
     color var(--transition-base),
