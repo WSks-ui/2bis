@@ -747,6 +747,40 @@ class AIClientResponseTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn(b"Content-Type: image/jpeg", seen_body)
         self.assertIn(b"Content-Type: image/webp", seen_body)
 
+    async def test_mask_edit_sends_image_and_mask_fields(self) -> None:
+        seen_body = b""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal seen_body
+            seen_body = request.read()
+            return httpx.Response(
+                200,
+                json={"data": [{"b64_json": base64.b64encode(PNG_BYTES).decode("ascii")}]},
+            )
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            with (
+                patch("app.services.ai_client.get_client", new=AsyncMock(return_value=client)),
+                patch.object(AIClient, "_wait_for_request_slot", new=AsyncMock()),
+                patch(
+                    "app.services.ai_client.get_active_api_config",
+                    new=AsyncMock(return_value=self.api_config()),
+                ),
+            ):
+                result = await AIClient.edit_with_mask_metadata(
+                    (PNG_BYTES, "source.png", "image/png"),
+                    (PNG_BYTES, "mask.png", "image/png"),
+                    "replace the selected area",
+                    "low",
+                    "1024x1024",
+                )
+
+        self.assertTrue(result.data_url.startswith("data:image/png;base64,"))
+        self.assertEqual(seen_body.count(b'name="image"'), 1)
+        self.assertEqual(seen_body.count(b'name="mask"'), 1)
+        self.assertIn(b'filename="source.png"', seen_body)
+        self.assertIn(b'filename="mask.png"', seen_body)
+
     async def test_generate_returns_safe_request_metadata(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(

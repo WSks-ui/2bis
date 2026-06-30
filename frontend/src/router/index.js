@@ -7,6 +7,8 @@ const loadHomeView = () => import('../views/Home.vue')
 const loadRechargeView = () => import('../views/Recharge.vue')
 const loadHistoryView = () => import('../views/History.vue')
 const loadAdminApiKeysView = () => import('../views/AdminApiKeys.vue')
+const loadStudioView = () => import('../views/Studio.vue')
+const loadStudioWorkspaceView = () => import('../views/StudioWorkspace.vue')
 
 const routes = [
   {
@@ -39,6 +41,18 @@ const routes = [
     path: '/history',
     name: 'History',
     component: loadHistoryView,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/studio',
+    name: 'Studio',
+    component: loadStudioView,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/studio/:workspaceId',
+    name: 'StudioWorkspace',
+    component: loadStudioWorkspaceView,
     meta: { requiresAuth: true }
   },
   {
@@ -81,6 +95,13 @@ export default router
 
 export function preloadHistoryRoute() {
   return loadHistoryView().catch(() => {})
+}
+
+export function preloadStudioRoute() {
+  return Promise.allSettled([
+    loadStudioView(),
+    loadStudioWorkspaceView(),
+  ])
 }
 
 export function preloadPlansRoute() {

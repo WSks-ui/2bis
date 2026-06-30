@@ -34,6 +34,7 @@ from app.services.ai_client import (
 from app.services.generation_options import GenerationOptions
 from app.services.image_storage import save_data_url
 from app.services.quota_manager import QuotaManager
+from app.services.studio_settlement import settle_studio_task_result
 from app.services.task_queue import close_redis, dequeue_generation_task, enqueue_generation_task
 from app.services.upload_storage import read_upload_file
 
@@ -172,6 +173,14 @@ async def read_task_source_images(task: GenerationTask) -> list[tuple[bytes, str
     return images
 
 
+async def read_task_source_mask(task: GenerationTask) -> tuple[bytes, str, str] | None:
+    if not task.source_mask_path:
+        return None
+    mime_type = task.source_mask_mime_type or "image/png"
+    filename = f"mask.{GenerationOptions.extension_for_mime(mime_type)}"
+    return await read_upload_file(task.source_mask_path), filename, mime_type
+
+
 def schedule_remote_image_mirror(task_id: int, user_id: int, remote_url: str | None) -> None:
     if not remote_url or not remote_url.startswith(("http://", "https://")):
         return
@@ -195,6 +204,7 @@ async def mirror_remote_image(task_id: int, user_id: int, remote_url: str) -> No
             task = await db.get(GenerationTask, task_id)
             if task is not None and task.image_url == remote_url:
                 task.image_url = local_url
+                await settle_studio_task_result(db, task)
 
             result = await db.execute(
                 select(GenerateHistory).where(
@@ -326,17 +336,34 @@ async def process_task(task_id: int) -> None:
             source_images = await read_task_source_images(task)
             if not source_images:
                 raise ValueError("No source image found for image generation task")
-            ai_result = await asyncio.wait_for(
-                AIClient.edit_multiple_with_metadata(
-                    source_images,
-                    task.prompt,
-                    task.quality,
-                    task.size,
-                    on_response_headers=mark_response_headers_received,
-                    on_body_progress=mark_body_progress,
-                ),
-                timeout=GENERATION_TASK_TIMEOUT,
-            )
+            source_mask = await read_task_source_mask(task)
+            if source_mask is not None:
+                if len(source_images) != 1:
+                    raise ValueError("Masked image edit requires exactly one source image")
+                ai_result = await asyncio.wait_for(
+                    AIClient.edit_with_mask_metadata(
+                        source_images[0],
+                        source_mask,
+                        task.prompt,
+                        task.quality,
+                        task.size,
+                        on_response_headers=mark_response_headers_received,
+                        on_body_progress=mark_body_progress,
+                    ),
+                    timeout=GENERATION_TASK_TIMEOUT,
+                )
+            else:
+                ai_result = await asyncio.wait_for(
+                    AIClient.edit_multiple_with_metadata(
+                        source_images,
+                        task.prompt,
+                        task.quality,
+                        task.size,
+                        on_response_headers=mark_response_headers_received,
+                        on_body_progress=mark_body_progress,
+                    ),
+                    timeout=GENERATION_TASK_TIMEOUT,
+                )
         raw_data_url = ai_result.data_url
         upstream_seconds = time.monotonic() - upstream_started_at
         logger.info(
@@ -393,6 +420,7 @@ async def process_task(task_id: int) -> None:
             apply_upstream_audit(history, ai_result)
             history.upstream_save_seconds = round(save_seconds, 3)
             db.add(history)
+            await settle_studio_task_result(db, task)
             await db.commit()
             total_seconds = time.monotonic() - task_started_at
             logger.info("task %s success in %.1fs", task_id, total_seconds)
@@ -440,6 +468,7 @@ async def process_task(task_id: int) -> None:
             task.progress_stage = "failed"
             task.progress_message = "生成未能完成，已自动退回额度。"
             task.finished_at = datetime.utcnow()
+            await settle_studio_task_result(db, task)
             await db.commit()
             logger.exception("task %s failed and refunded", task_id)
 

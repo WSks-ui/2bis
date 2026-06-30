@@ -264,6 +264,53 @@ class AIClient:
         )
 
     @staticmethod
+    async def edit_with_mask_metadata(
+        image: tuple[bytes, str, str],
+        mask: tuple[bytes, str, str],
+        prompt: str,
+        quality: str,
+        size: str,
+        on_response_headers: Callable[[httpx.Response], Awaitable[None]] | None = None,
+        on_body_progress: BodyProgressCallback | None = None,
+    ) -> AIImageResult:
+        image_bytes, image_filename, image_mime_type = image
+        mask_bytes, mask_filename, mask_mime_type = mask
+        if not image_bytes:
+            raise ValueError("Source image is required")
+        if not mask_bytes:
+            raise ValueError("Mask image is required")
+
+        quality_level = QUALITY_LEVEL_MAP.get(quality, "low")
+        files = [
+            (
+                "image",
+                (
+                    image_filename,
+                    image_bytes,
+                    AIClient._normalize_mime_type(image_mime_type) or "image/png",
+                ),
+            ),
+            (
+                "mask",
+                (
+                    mask_filename,
+                    mask_bytes,
+                    AIClient._normalize_mime_type(mask_mime_type) or "image/png",
+                ),
+            ),
+        ]
+        form_data = {"model": MODEL_NAME, "prompt": prompt, "n": "1", "size": size, "quality": quality_level}
+        return await AIClient._call_api_with_key_failover(
+            endpoint="/images/edits",
+            payload=form_data,
+            is_json=False,
+            files=files,
+            log_label=f"[AI MASK EDIT REQUEST] quality={quality_level} | size={size}",
+            on_response_headers=on_response_headers,
+            on_body_progress=on_body_progress,
+        )
+
+    @staticmethod
     async def _call_api(url, payload, is_json=True, files=None):
         return (await AIClient._call_api_with_metadata(url, payload, is_json, files)).display_url
 

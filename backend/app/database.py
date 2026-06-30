@@ -53,6 +53,132 @@ def _sqlite_add_upstream_audit_columns(cursor, table_name: str, columns: set[str
             cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
 
 
+def _sqlite_create_studio_tables(cursor, tables: set[str]) -> None:
+    # Studio 画布是新能力，但本地 SQLite 可能长期不跑 Alembic；这里负责让旧开发库能原地启动。
+    if "workspaces" not in tables:
+        cursor.execute(
+            """
+            CREATE TABLE workspaces (
+                id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                name VARCHAR(120) NOT NULL,
+                description TEXT,
+                cover_asset_id INTEGER,
+                settings_json TEXT DEFAULT '{}' NOT NULL,
+                canvas_revision INTEGER DEFAULT 0 NOT NULL,
+                created_at DATETIME NOT NULL,
+                updated_at DATETIME NOT NULL,
+                last_opened_at DATETIME,
+                archived_at DATETIME,
+                deleted_at DATETIME,
+                PRIMARY KEY (id)
+            )
+            """
+        )
+        cursor.execute("CREATE INDEX ix_workspaces_id ON workspaces (id)")
+        cursor.execute("CREATE INDEX ix_workspaces_user_id ON workspaces (user_id)")
+        cursor.execute("CREATE INDEX ix_workspaces_archived_at ON workspaces (archived_at)")
+        cursor.execute("CREATE INDEX ix_workspaces_deleted_at ON workspaces (deleted_at)")
+
+    if "workspace_assets" not in tables:
+        cursor.execute(
+            """
+            CREATE TABLE workspace_assets (
+                id INTEGER NOT NULL,
+                workspace_id INTEGER NOT NULL REFERENCES workspaces(id),
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                asset_type VARCHAR(30) DEFAULT 'image' NOT NULL,
+                source_type VARCHAR(40) DEFAULT 'upload' NOT NULL,
+                title VARCHAR(160),
+                url TEXT,
+                thumbnail_url TEXT,
+                mime_type VARCHAR(80),
+                width INTEGER,
+                height INTEGER,
+                text_content TEXT,
+                task_id INTEGER REFERENCES generation_tasks(id),
+                history_id INTEGER REFERENCES generate_histories(id),
+                parent_asset_id INTEGER REFERENCES workspace_assets(id),
+                metadata_json TEXT DEFAULT '{}' NOT NULL,
+                created_at DATETIME NOT NULL,
+                updated_at DATETIME NOT NULL,
+                deleted_at DATETIME,
+                PRIMARY KEY (id)
+            )
+            """
+        )
+        cursor.execute("CREATE INDEX ix_workspace_assets_id ON workspace_assets (id)")
+        cursor.execute("CREATE INDEX ix_workspace_assets_workspace_id ON workspace_assets (workspace_id)")
+        cursor.execute("CREATE INDEX ix_workspace_assets_user_id ON workspace_assets (user_id)")
+        cursor.execute("CREATE INDEX ix_workspace_assets_asset_type ON workspace_assets (asset_type)")
+        cursor.execute("CREATE INDEX ix_workspace_assets_source_type ON workspace_assets (source_type)")
+        cursor.execute("CREATE INDEX ix_workspace_assets_task_id ON workspace_assets (task_id)")
+        cursor.execute("CREATE INDEX ix_workspace_assets_history_id ON workspace_assets (history_id)")
+        cursor.execute("CREATE INDEX ix_workspace_assets_deleted_at ON workspace_assets (deleted_at)")
+
+    if "canvas_items" not in tables:
+        cursor.execute(
+            """
+            CREATE TABLE canvas_items (
+                id INTEGER NOT NULL,
+                workspace_id INTEGER NOT NULL REFERENCES workspaces(id),
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                asset_id INTEGER REFERENCES workspace_assets(id),
+                task_id INTEGER REFERENCES generation_tasks(id),
+                item_type VARCHAR(30) NOT NULL,
+                x FLOAT DEFAULT 0 NOT NULL,
+                y FLOAT DEFAULT 0 NOT NULL,
+                width FLOAT DEFAULT 240 NOT NULL,
+                height FLOAT DEFAULT 180 NOT NULL,
+                rotation FLOAT DEFAULT 0 NOT NULL,
+                z_index INTEGER DEFAULT 0 NOT NULL,
+                locked BOOLEAN DEFAULT 0 NOT NULL,
+                title VARCHAR(160),
+                data_json TEXT DEFAULT '{}' NOT NULL,
+                created_at DATETIME NOT NULL,
+                updated_at DATETIME NOT NULL,
+                deleted_at DATETIME,
+                PRIMARY KEY (id)
+            )
+            """
+        )
+        cursor.execute("CREATE INDEX ix_canvas_items_id ON canvas_items (id)")
+        cursor.execute("CREATE INDEX ix_canvas_items_workspace_id ON canvas_items (workspace_id)")
+        cursor.execute("CREATE INDEX ix_canvas_items_user_id ON canvas_items (user_id)")
+        cursor.execute("CREATE INDEX ix_canvas_items_asset_id ON canvas_items (asset_id)")
+        cursor.execute("CREATE INDEX ix_canvas_items_task_id ON canvas_items (task_id)")
+        cursor.execute("CREATE INDEX ix_canvas_items_item_type ON canvas_items (item_type)")
+        cursor.execute("CREATE INDEX ix_canvas_items_deleted_at ON canvas_items (deleted_at)")
+
+    if "canvas_relations" not in tables:
+        cursor.execute(
+            """
+            CREATE TABLE canvas_relations (
+                id INTEGER NOT NULL,
+                workspace_id INTEGER NOT NULL REFERENCES workspaces(id),
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                source_item_id INTEGER NOT NULL REFERENCES canvas_items(id),
+                target_item_id INTEGER NOT NULL REFERENCES canvas_items(id),
+                relation_type VARCHAR(40) NOT NULL,
+                label VARCHAR(120),
+                strength FLOAT DEFAULT 1 NOT NULL,
+                data_json TEXT DEFAULT '{}' NOT NULL,
+                created_at DATETIME NOT NULL,
+                updated_at DATETIME NOT NULL,
+                deleted_at DATETIME,
+                PRIMARY KEY (id)
+            )
+            """
+        )
+        cursor.execute("CREATE INDEX ix_canvas_relations_id ON canvas_relations (id)")
+        cursor.execute("CREATE INDEX ix_canvas_relations_workspace_id ON canvas_relations (workspace_id)")
+        cursor.execute("CREATE INDEX ix_canvas_relations_user_id ON canvas_relations (user_id)")
+        cursor.execute("CREATE INDEX ix_canvas_relations_source_item_id ON canvas_relations (source_item_id)")
+        cursor.execute("CREATE INDEX ix_canvas_relations_target_item_id ON canvas_relations (target_item_id)")
+        cursor.execute("CREATE INDEX ix_canvas_relations_relation_type ON canvas_relations (relation_type)")
+        cursor.execute("CREATE INDEX ix_canvas_relations_deleted_at ON canvas_relations (deleted_at)")
+
+
 if _is_sqlite:
     @event.listens_for(engine.sync_engine, "connect")
     def _on_sqlite_connect(dbapi_connection, connection_record):
@@ -82,6 +208,12 @@ if _is_sqlite:
 
         if "generation_tasks" in tables:
             columns = _sqlite_columns(cursor, "generation_tasks")
+            if "workspace_id" not in columns:
+                cursor.execute("ALTER TABLE generation_tasks ADD COLUMN workspace_id INTEGER")
+                cursor.execute("CREATE INDEX IF NOT EXISTS ix_generation_tasks_workspace_id ON generation_tasks (workspace_id)")
+            if "canvas_item_id" not in columns:
+                cursor.execute("ALTER TABLE generation_tasks ADD COLUMN canvas_item_id INTEGER")
+                cursor.execute("CREATE INDEX IF NOT EXISTS ix_generation_tasks_canvas_item_id ON generation_tasks (canvas_item_id)")
             if "balance_source" not in columns:
                 cursor.execute("ALTER TABLE generation_tasks ADD COLUMN balance_source VARCHAR(20)")
             if "workflow_type" not in columns:
@@ -98,6 +230,12 @@ if _is_sqlite:
                 cursor.execute("ALTER TABLE generation_tasks ADD COLUMN source_image_paths TEXT")
             if "source_image_mime_types" not in columns:
                 cursor.execute("ALTER TABLE generation_tasks ADD COLUMN source_image_mime_types TEXT")
+            if "source_mask_path" not in columns:
+                cursor.execute("ALTER TABLE generation_tasks ADD COLUMN source_mask_path TEXT")
+            if "source_mask_mime_type" not in columns:
+                cursor.execute("ALTER TABLE generation_tasks ADD COLUMN source_mask_mime_type VARCHAR(50)")
+            if "studio_source_item_ids_json" not in columns:
+                cursor.execute("ALTER TABLE generation_tasks ADD COLUMN studio_source_item_ids_json TEXT")
             if "progress_stage" not in columns:
                 cursor.execute("ALTER TABLE generation_tasks ADD COLUMN progress_stage VARCHAR(40)")
             if "progress_message" not in columns:
@@ -207,6 +345,7 @@ if _is_sqlite:
             cursor.execute("CREATE INDEX ix_admin_audit_logs_action ON admin_audit_logs (action)")
             cursor.execute("CREATE INDEX ix_admin_audit_logs_created_at ON admin_audit_logs (created_at)")
 
+        _sqlite_create_studio_tables(cursor, tables)
         cursor.close()
 
 
@@ -226,7 +365,19 @@ async def get_db():
 
 
 async def init_db():
-    from app.models import AdminAuditLog, ApiKeyConfig, DailyCheckin, GenerateHistory, GenerationTask, Order, User  # noqa: F401
+    from app.models import (  # noqa: F401
+        AdminAuditLog,
+        ApiKeyConfig,
+        CanvasItem,
+        CanvasRelation,
+        DailyCheckin,
+        GenerateHistory,
+        GenerationTask,
+        Order,
+        User,
+        Workspace,
+        WorkspaceAsset,
+    )
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
